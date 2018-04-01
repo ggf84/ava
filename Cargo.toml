@@ -1,0 +1,6 @@
+[package]
+name = "ava"
+version = "0.1.0"
+authors = ["Guilherme G. Ferrari <gg.ferrari@gmail.com>"]
+
+[dependencies]
