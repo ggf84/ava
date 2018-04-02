@@ -1,6 +1,10 @@
 [package]
 name = "ava"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Guilherme G. Ferrari <gg.ferrari@gmail.com>"]
+description = "N-body experiments in Rust"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/ggf84/ava"
 
 [dependencies]
