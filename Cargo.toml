@@ -1,8 +1,10 @@
 [package]
 name = "ava"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Guilherme G. Ferrari <gg.ferrari@gmail.com>"]
 description = "N-body experiments in Rust"
+homepage = "https://crates.io/crates/ava"
+documentation = "https://docs.rs/ava"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/ggf84/ava"
