@@ -1,5 +1,8 @@
 pub mod acc;
+pub mod crk;
+pub mod jrk;
 pub mod phi;
+pub mod snp;
 
 use rayon;
 

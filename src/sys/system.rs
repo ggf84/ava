@@ -31,6 +31,48 @@ impl ParticleSystem {
     pub fn get_acc_p2p(&self, other: &Self) -> (Vec<([Real; 3],)>, Vec<([Real; 3],)>) {
         compute::acc::rectangle(&self.particles[..], &other.particles[..])
     }
+
+    /// Compute the [0, 1]-derivative of the gravitational acceleration for each particle in the system due to itself.
+    pub fn get_jrk(&self) -> Vec<([Real; 3], [Real; 3])> {
+        compute::jrk::triangle(&self.particles[..])
+    }
+    /// Compute the [0, 1]-derivative of the gravitational acceleration for each particle in the system due to 'other' system.
+    pub fn get_jrk_p2p(
+        &self,
+        other: &Self,
+    ) -> (Vec<([Real; 3], [Real; 3])>, Vec<([Real; 3], [Real; 3])>) {
+        compute::jrk::rectangle(&self.particles[..], &other.particles[..])
+    }
+
+    /// Compute the [0, 1, 2]-derivative of the gravitational acceleration for each particle in the system due to itself.
+    pub fn get_snp(&self) -> Vec<([Real; 3], [Real; 3], [Real; 3])> {
+        compute::snp::triangle(&self.particles[..])
+    }
+    /// Compute the [0, 1, 2]-derivative of the gravitational acceleration for each particle in the system due to 'other' system.
+    pub fn get_snp_p2p(
+        &self,
+        other: &Self,
+    ) -> (
+        Vec<([Real; 3], [Real; 3], [Real; 3])>,
+        Vec<([Real; 3], [Real; 3], [Real; 3])>,
+    ) {
+        compute::snp::rectangle(&self.particles[..], &other.particles[..])
+    }
+
+    /// Compute the [0, 1, 2, 3]-derivative of the gravitational acceleration for each particle in the system due to itself.
+    pub fn get_crk(&self) -> Vec<([Real; 3], [Real; 3], [Real; 3], [Real; 3])> {
+        compute::crk::triangle(&self.particles[..])
+    }
+    /// Compute the [0, 1, 2, 3]-derivative of the gravitational acceleration for each particle in the system due to 'other' system.
+    pub fn get_crk_p2p(
+        &self,
+        other: &Self,
+    ) -> (
+        Vec<([Real; 3], [Real; 3], [Real; 3], [Real; 3])>,
+        Vec<([Real; 3], [Real; 3], [Real; 3], [Real; 3])>,
+    ) {
+        compute::crk::rectangle(&self.particles[..], &other.particles[..])
+    }
 }
 
 impl ParticleSystem {
