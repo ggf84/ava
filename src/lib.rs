@@ -2,6 +2,7 @@ extern crate rand;
 extern crate rayon;
 
 pub mod compute;
+pub mod ics;
 pub mod sys;
 
 pub mod real {
