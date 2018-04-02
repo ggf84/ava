@@ -10,3 +10,18 @@ license = "MIT"
 repository = "https://github.com/ggf84/ava"
 
 [dependencies]
+rand = "0.4.2"
+rayon = "1.0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1
+
+[features]
+default = ["f64"]
+f32 = []    # enable single precision
+f64 = []    # enable double precision
