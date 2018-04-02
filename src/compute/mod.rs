@@ -1,4 +1,5 @@
 pub mod acc;
+pub mod phi;
 
 use rayon;
 

@@ -1,6 +1,9 @@
 extern crate rand;
 extern crate rayon;
 
+pub mod compute;
+pub mod sys;
+
 pub mod real {
     #[cfg(all(feature = "f32", not(feature = "f64")))]
     pub use std::f32::*;

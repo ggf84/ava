@@ -14,6 +14,15 @@ impl ParticleSystem {
 }
 
 impl ParticleSystem {
+    /// Compute the gravitational potential for each particle in the system due to itself.
+    pub fn get_phi(&self) -> Vec<Real> {
+        compute::phi::triangle(&self.particles[..])
+    }
+    /// Compute the gravitational potential for each particle in the system due to 'other' system.
+    pub fn get_phi_p2p(&self, other: &Self) -> (Vec<Real>, Vec<Real>) {
+        compute::phi::rectangle(&self.particles[..], &other.particles[..])
+    }
+
     /// Compute the [0]-derivative of the gravitational acceleration for each particle in the system due to itself.
     pub fn get_acc(&self) -> Vec<([Real; 3],)> {
         compute::acc::triangle(&self.particles[..])
