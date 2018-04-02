@@ -1,5 +1,5 @@
-extern crate rand;
 extern crate ava;
+extern crate rand;
 
 use std::time::Instant;
 use rand::{SeedableRng, StdRng};
