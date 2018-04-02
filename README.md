@@ -1,6 +1,6 @@
 # `ava`
 
-N-body experiments in **Rust**.
+N-body experiments in Rust.
 
 # Usage
 
@@ -9,7 +9,7 @@ Please check back later or consider becoming a contributor.
 
 # Contributing
 
-Any kind of contribution to `ava` is welcome. If you want, there are several ways to go:
+Any kind of contribution to `ava` is welcome. If you want to help, there are several ways to go:
 - improving the documentation;
 - helping with language issues;
 - testing the code on your systems to find bugs;
