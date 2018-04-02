@@ -1,3 +1,5 @@
+pub mod acc;
+
 use rayon;
 
 /// Kernel methods for triangle/rectangle parallel computations.

@@ -1,4 +1,5 @@
 use real::Real;
+use compute;
 use sys::particles::Particle;
 
 #[derive(Debug, Default, PartialEq, Clone)]
@@ -9,6 +10,17 @@ pub struct ParticleSystem {
 impl ParticleSystem {
     pub fn new() -> Self {
         Default::default()
+    }
+}
+
+impl ParticleSystem {
+    /// Compute the [0]-derivative of the gravitational acceleration for each particle in the system due to itself.
+    pub fn get_acc(&self) -> Vec<([Real; 3],)> {
+        compute::acc::triangle(&self.particles[..])
+    }
+    /// Compute the [0]-derivative of the gravitational acceleration for each particle in the system due to 'other' system.
+    pub fn get_acc_p2p(&self, other: &Self) -> (Vec<([Real; 3],)>, Vec<([Real; 3],)>) {
+        compute::acc::rectangle(&self.particles[..], &other.particles[..])
     }
 }
 
