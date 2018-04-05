@@ -1,33 +1,66 @@
+use rayon;
+
 pub mod acc;
 pub mod crk;
 pub mod jrk;
 pub mod phi;
 pub mod snp;
 
-use rayon;
+trait SplitAt {
+    type Output: ?Sized;
+    fn len(&self) -> usize;
+    fn split_at(&self, mid: usize) -> (&Self::Output, &Self::Output);
+}
 
-/// Kernel methods for triangle/rectangle parallel computations.
-trait Kernel<SrcType, DstType>
+trait SplitAtMut {
+    type Output: ?Sized;
+    fn len(&self) -> usize;
+    fn split_at_mut(&mut self, mid: usize) -> (&mut Self::Output, &mut Self::Output);
+}
+
+impl<T> SplitAt for [T] {
+    type Output = [T];
+    fn len(&self) -> usize {
+        self.len()
+    }
+    fn split_at(&self, mid: usize) -> (&[T], &[T]) {
+        self.split_at(mid)
+    }
+}
+
+impl<T> SplitAtMut for [T] {
+    type Output = [T];
+    fn len(&self) -> usize {
+        self.len()
+    }
+    fn split_at_mut(&mut self, mid: usize) -> (&mut [T], &mut [T]) {
+        self.split_at_mut(mid)
+    }
+}
+
+/// Kernel trait for triangle/rectangle parallel computations.
+trait Kernel
 where
     Self: Sync,
-    SrcType: Sync,
-    DstType: Send,
 {
-    /// Fallback to sequential for arrays less than BLOCKSIZE in length
+    type SrcType: ?Sized + Sync + SplitAt<Output = Self::SrcType>;
+    type DstType: ?Sized + Send + SplitAtMut<Output = Self::DstType>;
+
+    /// Fallback to sequential for arrays less than or equal BLOCKSIZE in length
     const BLOCKSIZE: usize;
 
     /// Sequential kernel
     fn kernel(
         &self,
-        isrc: &[SrcType],
-        jsrc: &[SrcType],
-        idst: &mut [DstType],
-        jdst: &mut [DstType],
+        isrc: &Self::SrcType,
+        jsrc: &Self::SrcType,
+        idst: &mut Self::DstType,
+        jdst: &mut Self::DstType,
     );
 
     /// Parallel triangle kernel
-    fn triangle(&self, src: &[SrcType], dst: &mut [DstType]) {
-        let len = dst.len();
+    fn triangle(&self, src: &Self::SrcType, dst: &mut Self::DstType) {
+        let len = src.len();
         if len > 1 {
             let mid = len / 2;
             let (src_lo, src_hi) = src.split_at(mid);
@@ -45,13 +78,13 @@ where
     /// Parallel rectangle kernel
     fn rectangle(
         &self,
-        isrc: &[SrcType],
-        jsrc: &[SrcType],
-        idst: &mut [DstType],
-        jdst: &mut [DstType],
+        isrc: &Self::SrcType,
+        jsrc: &Self::SrcType,
+        idst: &mut Self::DstType,
+        jdst: &mut Self::DstType,
     ) {
-        let ilen = idst.len();
-        let jlen = jdst.len();
+        let ilen = isrc.len();
+        let jlen = jsrc.len();
         if ilen > Self::BLOCKSIZE || jlen > Self::BLOCKSIZE {
             let imid = ilen / 2;
             let jmid = jlen / 2;
