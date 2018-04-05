@@ -1,17 +1,13 @@
-use real::{Aligned, Real};
-use super::{Kernel, loop1, loop2, loop3};
+use real::Real;
 use sys::particles::Particle;
-use std::mem;
-
-const TILE: usize = 16 / mem::size_of::<Real>();
-const NTILES: usize = 32;
+use super::{Aligned, Kernel, loop1, loop2, loop3, TILE};
 
 struct Phi {}
 impl Kernel for Phi {
     type SrcType = [Particle];
     type DstType = [Real];
 
-    const BLOCKSIZE: usize = TILE * NTILES;
+    const NTILES: usize = 32;
 
     // flop count: 16
     fn kernel(
@@ -22,10 +18,10 @@ impl Kernel for Phi {
         jdst: &mut Self::DstType,
     ) {
         let ni_tiles = (isrc.len() + TILE - 1) / TILE;
-        let mut _im: [Aligned<[Real; TILE]>; NTILES] = Default::default();
-        let mut _ie2: [Aligned<[Real; TILE]>; NTILES] = Default::default();
-        let mut _ir: [([Aligned<[Real; TILE]>; 3],); NTILES] = Default::default();
-        let mut _iphi: [Aligned<[Real; TILE]>; NTILES] = Default::default();
+        let mut _im: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
+        let mut _ie2: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
+        let mut _ir: [([Aligned<[Real; TILE]>; 3],); Self::NTILES] = Default::default();
+        let mut _iphi: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
         isrc.chunks(TILE).enumerate().for_each(|(ii, chunk)| {
             chunk.iter().enumerate().for_each(|(i, p)| {
                 _im[ii][i] = p.m;
@@ -37,10 +33,10 @@ impl Kernel for Phi {
         });
 
         let nj_tiles = (jsrc.len() + TILE - 1) / TILE;
-        let mut _jm: [Aligned<[Real; TILE]>; NTILES] = Default::default();
-        let mut _je2: [Aligned<[Real; TILE]>; NTILES] = Default::default();
-        let mut _jr: [([Aligned<[Real; TILE]>; 3],); NTILES] = Default::default();
-        let mut _jphi: [Aligned<[Real; TILE]>; NTILES] = Default::default();
+        let mut _jm: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
+        let mut _je2: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
+        let mut _jr: [([Aligned<[Real; TILE]>; 3],); Self::NTILES] = Default::default();
+        let mut _jphi: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
         jsrc.chunks(TILE).enumerate().for_each(|(jj, chunk)| {
             chunk.iter().enumerate().for_each(|(j, p)| {
                 _jm[jj][j] = p.m;

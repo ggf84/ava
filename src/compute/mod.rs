@@ -1,10 +1,30 @@
 use rayon;
+use real::Real;
+use std::mem::size_of;
+use std::ops::{Deref, DerefMut};
 
 pub mod acc;
 pub mod crk;
 pub mod jrk;
 pub mod phi;
 pub mod snp;
+
+const TILE: usize = 16 / size_of::<Real>();
+
+#[repr(align(16))]
+#[derive(Debug, Default, Copy, Clone)]
+struct Aligned<T>(T);
+impl<T> Deref for Aligned<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<T> DerefMut for Aligned<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 trait SplitAt {
     type Output: ?Sized;
@@ -46,8 +66,8 @@ where
     type SrcType: ?Sized + Sync + SplitAt<Output = Self::SrcType>;
     type DstType: ?Sized + Send + SplitAtMut<Output = Self::DstType>;
 
-    /// Fallback to sequential for arrays less than or equal BLOCKSIZE in length
-    const BLOCKSIZE: usize;
+    /// Fallback to sequential for arrays less than or equal to TILE * NTILES in length
+    const NTILES: usize;
 
     /// Sequential kernel
     fn kernel(
@@ -85,7 +105,7 @@ where
     ) {
         let ilen = isrc.len();
         let jlen = jsrc.len();
-        if ilen > Self::BLOCKSIZE || jlen > Self::BLOCKSIZE {
+        if ilen > TILE * Self::NTILES || jlen > TILE * Self::NTILES {
             let imid = ilen / 2;
             let jmid = jlen / 2;
 
@@ -103,7 +123,7 @@ where
                 || self.rectangle(isrc_lo, jsrc_hi, idst_lo, jdst_hi),
                 || self.rectangle(isrc_hi, jsrc_lo, idst_hi, jdst_lo),
             );
-        } else {
+        } else if ilen > 0 && jlen > 0 {
             self.kernel(isrc, jsrc, idst, jdst);
         }
     }
