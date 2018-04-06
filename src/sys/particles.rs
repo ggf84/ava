@@ -5,22 +5,38 @@ pub struct Particle {
     /// Id of the particle
     pub id: usize,
 
-    /// Mass of the particle
-    pub m: Real,
-
     /// Squared softening of the particle
-    pub e2: Real,
+    pub eps2: Real,
 
-    /// Position and its derivatives
-    pub r: ([Real; 3], [Real; 3], [Real; 3], [Real; 3]),
+    /// Mass of the particle
+    pub mass: Real,
+
+    /// xyz-Position
+    pub pos: [Real; 3],
+
+    /// xyz-Velocity
+    pub vel: [Real; 3],
+
+    /// xyz-Acceleration's 0-derivative
+    pub acc0: [Real; 3],
+
+    /// xyz-Acceleration's 1-derivative
+    pub acc1: [Real; 3],
+
+    /// xyz-Acceleration's 2-derivative
+    pub acc2: [Real; 3],
+
+    /// xyz-Acceleration's 3-derivative
+    pub acc3: [Real; 3],
 }
 
 impl Particle {
-    pub fn new(id: usize, m: Real, r: [Real; 3], v: [Real; 3]) -> Self {
+    pub fn new(id: usize, mass: Real, pos: [Real; 3], vel: [Real; 3]) -> Self {
         Particle {
             id: id,
-            m: m,
-            r: (r, v, [0.0; 3], [0.0; 3]),
+            mass: mass,
+            pos: pos,
+            vel: vel,
             ..Default::default()
         }
     }

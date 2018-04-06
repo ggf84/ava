@@ -21,152 +21,121 @@ fn main() {
 
     /*
     for p in ps.particles.iter() {
-        print!("{}\t{}", p.id, p.m);
-        print!("\t{}\t{}\t{}", p.r.0[0], p.r.0[1], p.r.0[2]);
-        print!("\t{}\t{}\t{}", p.r.1[0], p.r.1[1], p.r.1[2]);
-        print!("\t{}", p.e2);
+        print!("{}\t{}", p.id, p.mass);
+        print!("\t{}\t{}\t{}", p.pos[0], p.pos[1], p.pos[2]);
+        print!("\t{}\t{}\t{}", p.vel[0], p.vel[1], p.vel[2]);
+        print!("\t{}", p.eps2);
         println!();
     }
     */
     let ke = ps.kinectic_energy();
     let pe = ps.potential_energy();
     eprintln!("{:?} {:?} {:?}", ke, pe, ke + pe);
-    eprintln!("{:#?} {:#?} {:#?}", ps.com_m(), ps.com_r(), ps.com_v());
-
-    let acc = ps.get_acc();
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].0[0];
-        force_sum[1] += p.m * acc[i].0[1];
-        force_sum[2] += p.m * acc[i].0[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    println!("_acc: {:?}", &acc[..2]);
+    eprintln!(
+        "{:#?} {:#?} {:#?}",
+        ps.com_mass(),
+        ps.com_pos(),
+        ps.com_vel()
+    );
+    eprintln!("");
 
     let ps1 = model.build(1024 * 13, &mut rng);
     let ps2 = model.build(1024 * 5, &mut rng);
-    let (iacc, jacc) = ps1.get_acc_p2p(&ps2);
-    let mut force_sum = [0.0; 3];
+    let ((iacc0,), (jacc0,)) = ps1.get_acc_p2p(&ps2);
+    let mut ftot0 = [0.0; 3];
     for (i, p) in ps1.particles.iter().enumerate() {
-        force_sum[0] += p.m * iacc[i].0[0];
-        force_sum[1] += p.m * iacc[i].0[1];
-        force_sum[2] += p.m * iacc[i].0[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * iacc0[i][k];
+        }
     }
     for (j, p) in ps2.particles.iter().enumerate() {
-        force_sum[0] += p.m * jacc[j].0[0];
-        force_sum[1] += p.m * jacc[j].0[1];
-        force_sum[2] += p.m * jacc[j].0[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * jacc0[j][k];
+        }
     }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    println!("iacc: {:?}", &iacc[..2]);
-    println!("jacc: {:?}", &jacc[..2]);
+    eprintln!("ftot0: {:?}", ftot0);
+    eprintln!("iacc0: {:?}", &iacc0[..2]);
+    eprintln!("jacc0: {:?}", &jacc0[..2]);
+    eprintln!("");
 
-    let acc = ps.get_jrk();
-    let mut force_sum = [0.0; 3];
+    let (acc0,) = ps.get_acc();
+    let mut ftot0 = [0.0; 3];
     for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].0[0];
-        force_sum[1] += p.m * acc[i].0[1];
-        force_sum[2] += p.m * acc[i].0[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * acc0[i][k];
+        }
     }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].1[0];
-        force_sum[1] += p.m * acc[i].1[1];
-        force_sum[2] += p.m * acc[i].1[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    println!("_acc: {:?}", &acc[..2]);
+    eprintln!("ftot0: {:?}", ftot0);
+    eprintln!("_acc0: {:?}", &acc0[..2]);
+    eprintln!("");
 
-    for (i, p) in ps.particles.iter_mut().enumerate() {
-        p.r.2[0] = acc[i].0[0];
-        p.r.2[1] = acc[i].0[1];
-        p.r.2[2] = acc[i].0[2];
-    }
-    let acc = ps.get_snp();
-    let mut force_sum = [0.0; 3];
+    let (acc0, acc1) = ps.get_jrk();
+    let mut ftot0 = [0.0; 3];
+    let mut ftot1 = [0.0; 3];
     for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].0[0];
-        force_sum[1] += p.m * acc[i].0[1];
-        force_sum[2] += p.m * acc[i].0[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * acc0[i][k];
+            ftot1[k] += p.mass * acc1[i][k];
+        }
     }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].1[0];
-        force_sum[1] += p.m * acc[i].1[1];
-        force_sum[2] += p.m * acc[i].1[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].2[0];
-        force_sum[1] += p.m * acc[i].2[1];
-        force_sum[2] += p.m * acc[i].2[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    println!("_acc: {:?}", &acc[..2]);
+    eprintln!("ftot0: {:?}", ftot0);
+    eprintln!("ftot1: {:?}", ftot1);
+    eprintln!("_acc0: {:?}", &acc0[..2]);
+    eprintln!("_acc1: {:?}", &acc1[..2]);
+    eprintln!("");
 
     for (i, p) in ps.particles.iter_mut().enumerate() {
-        p.r.2[0] = acc[i].0[0];
-        p.r.2[1] = acc[i].0[1];
-        p.r.2[2] = acc[i].0[2];
-        p.r.3[0] = acc[i].1[0];
-        p.r.3[1] = acc[i].1[1];
-        p.r.3[2] = acc[i].1[2];
+        for k in 0..3 {
+            p.acc0[k] = acc0[i][k];
+        }
     }
-    let acc = ps.get_crk();
-    let mut force_sum = [0.0; 3];
+    let (acc0, acc1, acc2) = ps.get_snp();
+    let mut ftot0 = [0.0; 3];
+    let mut ftot1 = [0.0; 3];
+    let mut ftot2 = [0.0; 3];
     for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].0[0];
-        force_sum[1] += p.m * acc[i].0[1];
-        force_sum[2] += p.m * acc[i].0[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * acc0[i][k];
+            ftot1[k] += p.mass * acc1[i][k];
+            ftot2[k] += p.mass * acc2[i][k];
+        }
     }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
+    eprintln!("ftot0: {:?}", ftot0);
+    eprintln!("ftot1: {:?}", ftot1);
+    eprintln!("ftot2: {:?}", ftot2);
+    eprintln!("_acc0: {:?}", &acc0[..2]);
+    eprintln!("_acc1: {:?}", &acc1[..2]);
+    eprintln!("_acc2: {:?}", &acc2[..2]);
+    eprintln!("");
+
+    for (i, p) in ps.particles.iter_mut().enumerate() {
+        for k in 0..3 {
+            p.acc0[k] = acc0[i][k];
+            p.acc1[k] = acc1[i][k];
+        }
+    }
+    let (acc0, acc1, acc2, acc3) = ps.get_crk();
+    let mut ftot0 = [0.0; 3];
+    let mut ftot1 = [0.0; 3];
+    let mut ftot2 = [0.0; 3];
+    let mut ftot3 = [0.0; 3];
     for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].1[0];
-        force_sum[1] += p.m * acc[i].1[1];
-        force_sum[2] += p.m * acc[i].1[2];
+        for k in 0..3 {
+            ftot0[k] += p.mass * acc0[i][k];
+            ftot1[k] += p.mass * acc1[i][k];
+            ftot2[k] += p.mass * acc2[i][k];
+            ftot3[k] += p.mass * acc3[i][k];
+        }
     }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].2[0];
-        force_sum[1] += p.m * acc[i].2[1];
-        force_sum[2] += p.m * acc[i].2[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    let mut force_sum = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
-        force_sum[0] += p.m * acc[i].3[0];
-        force_sum[1] += p.m * acc[i].3[1];
-        force_sum[2] += p.m * acc[i].3[2];
-    }
-    println!("force_sum[0]: {:e}", force_sum[0]);
-    println!("force_sum[1]: {:e}", force_sum[1]);
-    println!("force_sum[2]: {:e}", force_sum[2]);
-    println!("_acc: {:?}", &acc[..2]);
+    eprintln!("ftot0: {:?}", ftot0);
+    eprintln!("ftot1: {:?}", ftot1);
+    eprintln!("ftot2: {:?}", ftot2);
+    eprintln!("ftot3: {:?}", ftot3);
+    eprintln!("_acc0: {:?}", &acc0[..2]);
+    eprintln!("_acc1: {:?}", &acc1[..2]);
+    eprintln!("_acc2: {:?}", &acc2[..2]);
+    eprintln!("_acc3: {:?}", &acc3[..2]);
+    eprintln!("");
 
     for _ in 0..1 {
         let now = Instant::now();
@@ -178,7 +147,7 @@ fn main() {
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        println!("phi: {:>11} {:.5?}", elapsed, ns_loop);
+        eprintln!("phi: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
@@ -191,7 +160,7 @@ fn main() {
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        println!("acc: {:>11} {:.5?}", elapsed, ns_loop);
+        eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
@@ -204,7 +173,7 @@ fn main() {
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        println!("jrk: {:>11} {:.5?}", elapsed, ns_loop);
+        eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
@@ -217,7 +186,7 @@ fn main() {
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        println!("snp: {:>11} {:.5?}", elapsed, ns_loop);
+        eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
@@ -230,7 +199,7 @@ fn main() {
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        println!("crk: {:>11} {:.5?}", elapsed, ns_loop);
+        eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
     }
 }
 

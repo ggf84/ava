@@ -17,33 +17,37 @@ fn create_particle_system(n: usize, seed: usize) -> ParticleSystem {
 
     let mut ps = ParticleSystem::new();
     for id in 0..n {
-        let m = rng.gen_range::<Real>(0.0, 1.0);
-        let e = rng.gen_range::<Real>(0.0, 1.0);
-        let r = [
+        let eps = rng.gen_range::<Real>(0.0, 1.0);
+        let mass = rng.gen_range::<Real>(0.0, 1.0);
+        let pos = [
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
         ];
-        let v = [
+        let vel = [
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
         ];
-        let a = [
+        let acc0 = [
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
         ];
-        let j = [
+        let acc1 = [
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
             rng.gen_range::<Real>(-1.0, 1.0),
         ];
         let particle = Particle {
             id: id,
-            m: m,
-            e2: e * e,
-            r: (r, v, a, j),
+            eps2: eps * eps,
+            mass: mass,
+            pos: pos,
+            vel: vel,
+            acc0: acc0,
+            acc1: acc1,
+            ..Default::default()
         };
         ps.particles.push(particle);
     }
