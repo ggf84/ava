@@ -41,7 +41,7 @@ fn create_particle_system(n: usize, seed: usize) -> ParticleSystem {
         ];
         let particle = Particle {
             id: id,
-            eps2: eps * eps,
+            eps: eps,
             mass: mass,
             pos: pos,
             vel: vel,

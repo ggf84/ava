@@ -5,8 +5,8 @@ pub struct Particle {
     /// Id of the particle
     pub id: usize,
 
-    /// Squared softening of the particle
-    pub eps2: Real,
+    /// Softening of the particle
+    pub eps: Real,
 
     /// Mass of the particle
     pub mass: Real,

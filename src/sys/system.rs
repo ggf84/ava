@@ -185,7 +185,7 @@ impl ParticleSystem {
         let n = self.particles.len();
         let mmean = 1.0 / n as Real;
         for p in self.particles.iter_mut() {
-            p.eps2 = eps * eps * (p.mass / mmean).powf(2.0 / 3.0);
+            p.eps = eps * (p.mass / mmean).cbrt();
         }
     }
 

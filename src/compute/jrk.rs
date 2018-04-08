@@ -18,7 +18,7 @@ impl Kernel for Jrk {
         jdst: &mut Self::DstType,
     ) {
         let ni_tiles = (isrc.len() + TILE - 1) / TILE;
-        let mut _ieps2: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _ieps: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _imass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _ir0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _ir1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
@@ -26,7 +26,7 @@ impl Kernel for Jrk {
         let mut _ia1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         isrc.chunks(TILE).enumerate().for_each(|(ii, chunk)| {
             chunk.iter().enumerate().for_each(|(i, p)| {
-                _ieps2[ii][i] = p.eps2;
+                _ieps[ii][i] = p.eps;
                 _imass[ii][i] = p.mass;
                 loop1(3, |k| {
                     _ir0[ii][k][i] = p.pos[k];
@@ -36,7 +36,7 @@ impl Kernel for Jrk {
         });
 
         let nj_tiles = (jsrc.len() + TILE - 1) / TILE;
-        let mut _jeps2: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _jeps: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _jmass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _jr0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _jr1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
@@ -44,7 +44,7 @@ impl Kernel for Jrk {
         let mut _ja1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         jsrc.chunks(TILE).enumerate().for_each(|(jj, chunk)| {
             chunk.iter().enumerate().for_each(|(j, p)| {
-                _jeps2[jj][j] = p.eps2;
+                _jeps[jj][j] = p.eps;
                 _jmass[jj][j] = p.mass;
                 loop1(3, |k| {
                     _jr0[jj][k][j] = p.pos[k];
@@ -61,14 +61,14 @@ impl Kernel for Jrk {
         let mut rinv3: Aligned<[[Real; TILE]; TILE]> = Default::default();
 
         for ii in 0..ni_tiles {
-            let ieps2 = _ieps2[ii];
+            let ieps = _ieps[ii];
             let imass = _imass[ii];
             let ir0 = _ir0[ii];
             let ir1 = _ir1[ii];
             let mut ia0 = _ia0[ii];
             let mut ia1 = _ia1[ii];
             for jj in 0..nj_tiles {
-                let jeps2 = &_jeps2[jj];
+                let jeps = &_jeps[jj];
                 let jmass = &_jmass[jj];
                 let jr0 = &_jr0[jj];
                 let jr1 = &_jr1[jj];
@@ -82,7 +82,7 @@ impl Kernel for Jrk {
                 });
 
                 loop2(TILE, TILE, |i, j| {
-                    s0[i][j] = ieps2[j ^ i] + jeps2[j];
+                    s0[i][j] = ieps[j ^ i] * jeps[j];
                 });
                 loop3(3, TILE, TILE, |k, i, j| {
                     s0[i][j] += dr0[k][i][j] * dr0[k][i][j];
