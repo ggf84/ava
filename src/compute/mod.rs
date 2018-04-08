@@ -12,7 +12,7 @@ pub mod snp;
 const TILE: usize = 16 / size_of::<Real>();
 
 #[repr(align(16))]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default)]
 struct Aligned<T>(T);
 impl<T> Deref for Aligned<T> {
     type Target = T;

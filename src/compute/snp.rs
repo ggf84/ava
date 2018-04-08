@@ -18,14 +18,14 @@ impl Kernel for Snp {
         jdst: &mut Self::DstType,
     ) {
         let ni_tiles = (isrc.len() + TILE - 1) / TILE;
-        let mut _ieps2: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
-        let mut _imass: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
-        let mut _ir0: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ir1: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ir2: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ia0: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ia1: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ia2: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
+        let mut _ieps2: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _imass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _ir0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ir1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ir2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ia0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ia1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ia2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         isrc.chunks(TILE).enumerate().for_each(|(ii, chunk)| {
             chunk.iter().enumerate().for_each(|(i, p)| {
                 _ieps2[ii][i] = p.eps2;
@@ -39,14 +39,14 @@ impl Kernel for Snp {
         });
 
         let nj_tiles = (jsrc.len() + TILE - 1) / TILE;
-        let mut _jeps2: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
-        let mut _jmass: [Aligned<[Real; TILE]>; Self::NTILES] = Default::default();
-        let mut _jr0: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _jr1: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _jr2: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ja0: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ja1: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
-        let mut _ja2: [[Aligned<[Real; TILE]>; 3]; Self::NTILES] = Default::default();
+        let mut _jeps2: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _jmass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
+        let mut _jr0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _jr1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _jr2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ja0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ja1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
+        let mut _ja2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         jsrc.chunks(TILE).enumerate().for_each(|(jj, chunk)| {
             chunk.iter().enumerate().for_each(|(j, p)| {
                 _jeps2[jj][j] = p.eps2;
@@ -60,16 +60,16 @@ impl Kernel for Snp {
         });
 
         const CQ21: Real = 5.0 / 3.0;
-        let mut dr0: [[Aligned<[Real; TILE]>; TILE]; 3] = Default::default();
-        let mut dr1: [[Aligned<[Real; TILE]>; TILE]; 3] = Default::default();
-        let mut dr2: [[Aligned<[Real; TILE]>; TILE]; 3] = Default::default();
-        let mut s0: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut s1: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut s2: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut s11: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut q21: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut rinv2: [Aligned<[Real; TILE]>; TILE] = Default::default();
-        let mut rinv3: [Aligned<[Real; TILE]>; TILE] = Default::default();
+        let mut dr0: Aligned<[[[Real; TILE]; TILE]; 3]> = Default::default();
+        let mut dr1: Aligned<[[[Real; TILE]; TILE]; 3]> = Default::default();
+        let mut dr2: Aligned<[[[Real; TILE]; TILE]; 3]> = Default::default();
+        let mut s0: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut s1: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut s2: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut s11: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut q21: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut rinv2: Aligned<[[Real; TILE]; TILE]> = Default::default();
+        let mut rinv3: Aligned<[[Real; TILE]; TILE]> = Default::default();
 
         for ii in 0..ni_tiles {
             let ieps2 = _ieps2[ii];
