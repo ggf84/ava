@@ -1,7 +1,7 @@
 extern crate ava;
 extern crate rand;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use rand::{SeedableRng, StdRng};
 
 use ava::ics::Model;
@@ -17,7 +17,7 @@ fn main() {
     let sdp = Plummer::new();
     let model = Model::new(imf, sdp);
 
-    let mut ps = model.build(1024 * 16, &mut rng);
+    let mut ps = model.build(1024 * 8, &mut rng);
 
     /*
     for p in ps.particles.iter() {
@@ -39,8 +39,8 @@ fn main() {
     );
     eprintln!("");
 
-    let ps1 = model.build(1024 * 13, &mut rng);
-    let ps2 = model.build(1024 * 5, &mut rng);
+    let ps1 = model.build(1024 * 11, &mut rng);
+    let ps2 = model.build(1024 * 3, &mut rng);
     let ((iacc0,), (jacc0,)) = ps1.get_acc_p2p(&ps2);
     let mut ftot0 = [0.0; 3];
     for (i, p) in ps1.particles.iter().enumerate() {
@@ -144,7 +144,7 @@ fn main() {
         // ps2.get_phi();
         // ps1.get_phi_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
+        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("phi: {:?} {:.5?}", duration, ns_loop);
@@ -157,7 +157,7 @@ fn main() {
         // ps2.get_acc();
         // ps1.get_acc_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
+        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
@@ -170,7 +170,7 @@ fn main() {
         // ps2.get_jrk();
         // ps1.get_jrk_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
+        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
@@ -183,7 +183,7 @@ fn main() {
         // ps2.get_snp();
         // ps1.get_snp_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
+        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
@@ -196,11 +196,99 @@ fn main() {
         // ps2.get_crk();
         // ps1.get_crk_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
+        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
     }
+
+    // --------------------
+
+    let mut rng: StdRng = SeedableRng::from_seed(&[1, 2, 3, 4][..]);
+
+    let imf = EqualMass::new(1.0);
+    let _imf = Maschberger2013::new(0.01, 150.0);
+    let sdp = Plummer::new();
+    let model = Model::new(imf, sdp);
+
+    let mut psys = model.build(256, &mut rng);
+
+    let tend = 10.0;
+    let mut tsim = 0.0;
+
+    let eta = 0.75;
+
+    let dtlog = 0.125;
+
+    use ava::sim::{Integrator, TimeStepScheme::*};
+
+    // use ava::sim::hermite::Hermite4;
+    // let integrator = Hermite4 {
+    //     npec: 2,
+    //     eta: eta,
+    //     // time_step_scheme: Constant,
+    //     time_step_scheme: Adaptive { shared: true },
+    // };
+
+    // use ava::sim::hermite::Hermite6;
+    // let integrator = Hermite6 {
+    //     npec: 2,
+    //     eta: eta,
+    //     // time_step_scheme: Constant,
+    //     time_step_scheme: Adaptive { shared: true },
+    // };
+
+    use ava::sim::hermite::Hermite8;
+    let integrator = Hermite8 {
+        npec: 2,
+        eta: eta,
+        // time_step_scheme: Constant,
+        time_step_scheme: Adaptive { shared: true },
+    };
+
+    let now = Instant::now();
+    let ke = psys.kinectic_energy();
+    let pe = psys.potential_energy();
+    let te_0 = ke + pe;
+    let mut te_n = te_0;
+    eprintln!("# system energy at t = {}: {:?}", tsim, te_0);
+    integrator.setup(&mut psys);
+    while tsim < tend {
+        if tsim % dtlog == 0.0 {
+            te_n = print_log(tsim, te_0, te_n, &psys, now.elapsed());
+        }
+        tsim += integrator.evolve(&mut psys);
+    }
+    if tsim % dtlog == 0.0 {
+        te_n = print_log(tsim, te_0, te_n, &psys, now.elapsed());
+    }
+    eprintln!("# system energy at t = {}: {:?}", tsim, te_n);
+    eprintln!("# total simulation time: {:?}", now.elapsed());
+}
+
+use ava::real::Real;
+use ava::sys::system::ParticleSystem;
+fn print_log(
+    tsim: Real,
+    te_0: Real,
+    te_n: Real,
+    psys: &ParticleSystem,
+    duration: Duration,
+) -> Real {
+    let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+    let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
+    let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
+    let ke = psys.kinectic_energy();
+    let pe = psys.potential_energy();
+    let te = ke + pe;
+    let ve = 2.0 * ke + pe;
+    let err_0 = (te - te_0) / te_0;
+    let err_n = (te - te_n) / te_n;
+    println!(
+        "{:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<12.7e}",
+        tsim, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed
+    );
+    te
 }
 
 // -- end of file --

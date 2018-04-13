@@ -5,29 +5,41 @@ pub struct Particle {
     /// Id of the particle
     pub id: usize,
 
+    /// Time-step of the particle
+    pub dt: Real,
+
+    /// Current time of the particle
+    pub tnow: Real,
+
     /// Softening of the particle
     pub eps: Real,
 
     /// Mass of the particle
     pub mass: Real,
 
-    /// xyz-Position
+    /// Position
     pub pos: [Real; 3],
 
-    /// xyz-Velocity
+    /// Velocity
     pub vel: [Real; 3],
 
-    /// xyz-Acceleration's 0-derivative
+    /// Acceleration's 0-derivative
     pub acc0: [Real; 3],
 
-    /// xyz-Acceleration's 1-derivative
+    /// Acceleration's 1-derivative
     pub acc1: [Real; 3],
 
-    /// xyz-Acceleration's 2-derivative
+    /// Acceleration's 2-derivative
     pub acc2: [Real; 3],
 
-    /// xyz-Acceleration's 3-derivative
+    /// Acceleration's 3-derivative
     pub acc3: [Real; 3],
+
+    /// Acceleration's 4-derivative
+    pub acc4: [Real; 3],
+
+    /// Acceleration's 5-derivative
+    pub acc5: [Real; 3],
 }
 
 impl Particle {
