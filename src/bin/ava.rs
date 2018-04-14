@@ -17,7 +17,7 @@ fn main() {
     let sdp = Plummer::new();
     let model = Model::new(imf, sdp);
 
-    let mut ps = model.build(1024 * 8, &mut rng);
+    let mut ps = model.build(1024 * 4, &mut rng);
 
     /*
     for p in ps.particles.iter() {
@@ -39,8 +39,8 @@ fn main() {
     );
     eprintln!("");
 
-    let ps1 = model.build(1024 * 11, &mut rng);
-    let ps2 = model.build(1024 * 3, &mut rng);
+    let ps1 = model.build(1024 * 7, &mut rng);
+    let ps2 = model.build(1024 * 1, &mut rng);
     let ((iacc0,), (jacc0,)) = ps1.get_acc_p2p(&ps2);
     let mut ftot0 = [0.0; 3];
     for (i, p) in ps1.particles.iter().enumerate() {
@@ -144,7 +144,7 @@ fn main() {
         // ps2.get_phi();
         // ps1.get_phi_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("phi: {:?} {:.5?}", duration, ns_loop);
@@ -157,7 +157,7 @@ fn main() {
         // ps2.get_acc();
         // ps1.get_acc_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
@@ -170,7 +170,7 @@ fn main() {
         // ps2.get_jrk();
         // ps1.get_jrk_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
@@ -183,7 +183,7 @@ fn main() {
         // ps2.get_snp();
         // ps1.get_snp_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
@@ -196,7 +196,7 @@ fn main() {
         // ps2.get_crk();
         // ps1.get_crk_p2p(&ps2);
         let duration = now.elapsed();
-        let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
@@ -275,7 +275,7 @@ fn print_log(
     psys: &ParticleSystem,
     duration: Duration,
 ) -> Real {
-    let elapsed = duration.as_secs() as f64 + 1.0e-9 * f64::from(duration.subsec_nanos());
+    let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
     let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
     let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
     let ke = psys.kinectic_energy();
@@ -286,7 +286,7 @@ fn print_log(
     let err_n = (te - te_n) / te_n;
     println!(
         "{:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<12.7e}",
-        tsim, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed
+        tsim, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed as f64 * 1.0e-9
     );
     te
 }

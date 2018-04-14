@@ -17,7 +17,11 @@ impl Kernel for Crk {
         idst: &mut Self::DstType,
         jdst: &mut Self::DstType,
     ) {
-        let ni_tiles = (isrc.len() + TILE - 1) / TILE;
+        let ni = isrc.len();
+        let nj = jsrc.len();
+        let ni_tiles = (ni + TILE - 1) / TILE;
+        let nj_tiles = (nj + TILE - 1) / TILE;
+
         let mut _ieps: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _imass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _ir0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
@@ -28,20 +32,19 @@ impl Kernel for Crk {
         let mut _ia1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _ia2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _ia3: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
-        isrc.chunks(TILE).enumerate().for_each(|(ii, chunk)| {
-            chunk.iter().enumerate().for_each(|(i, p)| {
-                _ieps[ii][i] = p.eps;
-                _imass[ii][i] = p.mass;
-                loop1(3, |k| {
-                    _ir0[ii][k][i] = p.pos[k];
-                    _ir1[ii][k][i] = p.vel[k];
-                    _ir2[ii][k][i] = p.acc0[k];
-                    _ir3[ii][k][i] = p.acc1[k];
-                });
-            });
-        });
-
-        let nj_tiles = (jsrc.len() + TILE - 1) / TILE;
+        for ii in 0..ni_tiles {
+            for i in 0..TILE {
+                if (TILE * ii + i) < ni {
+                    let ip = &isrc[TILE * ii + i];
+                    _ieps[ii][i] = ip.eps;
+                    _imass[ii][i] = ip.mass;
+                    loop1(3, |k| _ir0[ii][k][i] = ip.pos[k]);
+                    loop1(3, |k| _ir1[ii][k][i] = ip.vel[k]);
+                    loop1(3, |k| _ir2[ii][k][i] = ip.acc0[k]);
+                    loop1(3, |k| _ir3[ii][k][i] = ip.acc1[k]);
+                }
+            }
+        }
         let mut _jeps: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _jmass: Aligned<[[Real; TILE]; Self::NTILES]> = Default::default();
         let mut _jr0: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
@@ -52,18 +55,19 @@ impl Kernel for Crk {
         let mut _ja1: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _ja2: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
         let mut _ja3: Aligned<[[[Real; TILE]; 3]; Self::NTILES]> = Default::default();
-        jsrc.chunks(TILE).enumerate().for_each(|(jj, chunk)| {
-            chunk.iter().enumerate().for_each(|(j, p)| {
-                _jeps[jj][j] = p.eps;
-                _jmass[jj][j] = p.mass;
-                loop1(3, |k| {
-                    _jr0[jj][k][j] = p.pos[k];
-                    _jr1[jj][k][j] = p.vel[k];
-                    _jr2[jj][k][j] = p.acc0[k];
-                    _jr3[jj][k][j] = p.acc1[k];
-                });
-            });
-        });
+        for jj in 0..nj_tiles {
+            for j in 0..TILE {
+                if (TILE * jj + j) < nj {
+                    let jp = &jsrc[TILE * jj + j];
+                    _jeps[jj][j] = jp.eps;
+                    _jmass[jj][j] = jp.mass;
+                    loop1(3, |k| _jr0[jj][k][j] = jp.pos[k]);
+                    loop1(3, |k| _jr1[jj][k][j] = jp.vel[k]);
+                    loop1(3, |k| _jr2[jj][k][j] = jp.acc0[k]);
+                    loop1(3, |k| _jr3[jj][k][j] = jp.acc1[k]);
+                }
+            }
+        }
 
         const CQ21: Real = 5.0 / 3.0;
         const CQ31: Real = 8.0 / 3.0;
@@ -85,16 +89,16 @@ impl Kernel for Crk {
         let mut rinv3: Aligned<[[Real; TILE]; TILE]> = Default::default();
 
         for ii in 0..ni_tiles {
-            let ieps = _ieps[ii];
-            let imass = _imass[ii];
-            let ir0 = _ir0[ii];
-            let ir1 = _ir1[ii];
-            let ir2 = _ir2[ii];
-            let ir3 = _ir3[ii];
-            let mut ia0 = _ia0[ii];
-            let mut ia1 = _ia1[ii];
-            let mut ia2 = _ia2[ii];
-            let mut ia3 = _ia3[ii];
+            let ieps = &_ieps[ii];
+            let imass = &_imass[ii];
+            let ir0 = &_ir0[ii];
+            let ir1 = &_ir1[ii];
+            let ir2 = &_ir2[ii];
+            let ir3 = &_ir3[ii];
+            let ia0 = &mut _ia0[ii];
+            let ia1 = &mut _ia1[ii];
+            let ia2 = &mut _ia2[ii];
+            let ia3 = &mut _ia3[ii];
             for jj in 0..nj_tiles {
                 let jeps = &_jeps[jj];
                 let jmass = &_jmass[jj];
@@ -256,36 +260,33 @@ impl Kernel for Crk {
                 loop3(3, TILE, TILE, |k, i, j| {
                     ja3[k][j] += rinv3[i][j] * dr3[k][i][j];
                 });
+            } // jj
+        } // ii
+
+        for jj in 0..nj_tiles {
+            for j in 0..TILE {
+                if (TILE * jj + j) < nj {
+                    let minv = 1.0 / _jmass[jj][j];
+                    let jacc = &mut jdst[TILE * jj + j];
+                    loop1(3, |k| jacc.0[k] += _ja0[jj][k][j] * minv);
+                    loop1(3, |k| jacc.1[k] += _ja1[jj][k][j] * minv);
+                    loop1(3, |k| jacc.2[k] += _ja2[jj][k][j] * minv);
+                    loop1(3, |k| jacc.3[k] += _ja3[jj][k][j] * minv);
+                }
             }
-            _ia0[ii] = ia0;
-            _ia1[ii] = ia1;
-            _ia2[ii] = ia2;
-            _ia3[ii] = ia3;
         }
-
-        jdst.chunks_mut(TILE).enumerate().for_each(|(jj, chunk)| {
-            chunk.iter_mut().enumerate().for_each(|(j, acc)| {
-                let minv = 1.0 / _jmass[jj][j];
-                loop1(3, |k| {
-                    acc.0[k] += _ja0[jj][k][j] * minv;
-                    acc.1[k] += _ja1[jj][k][j] * minv;
-                    acc.2[k] += _ja2[jj][k][j] * minv;
-                    acc.3[k] += _ja3[jj][k][j] * minv;
-                });
-            });
-        });
-
-        idst.chunks_mut(TILE).enumerate().for_each(|(ii, chunk)| {
-            chunk.iter_mut().enumerate().for_each(|(i, acc)| {
-                let minv = 1.0 / _imass[ii][i];
-                loop1(3, |k| {
-                    acc.0[k] += _ia0[ii][k][i] * minv;
-                    acc.1[k] += _ia1[ii][k][i] * minv;
-                    acc.2[k] += _ia2[ii][k][i] * minv;
-                    acc.3[k] += _ia3[ii][k][i] * minv;
-                });
-            });
-        });
+        for ii in 0..ni_tiles {
+            for i in 0..TILE {
+                if (TILE * ii + i) < ni {
+                    let minv = 1.0 / _imass[ii][i];
+                    let iacc = &mut idst[TILE * ii + i];
+                    loop1(3, |k| iacc.0[k] += _ia0[ii][k][i] * minv);
+                    loop1(3, |k| iacc.1[k] += _ia1[ii][k][i] * minv);
+                    loop1(3, |k| iacc.2[k] += _ia2[ii][k][i] * minv);
+                    loop1(3, |k| iacc.3[k] += _ia3[ii][k][i] * minv);
+                }
+            }
+        }
     }
 }
 
