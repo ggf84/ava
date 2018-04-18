@@ -138,12 +138,12 @@ fn main() {
     eprintln!("");
 
     for _ in 0..1 {
-        let now = Instant::now();
+        let timer = Instant::now();
         ps.get_phi();
         // ps1.get_phi();
         // ps2.get_phi();
         // ps1.get_phi_p2p(&ps2);
-        let duration = now.elapsed();
+        let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
@@ -151,12 +151,12 @@ fn main() {
     }
 
     for _ in 0..1 {
-        let now = Instant::now();
+        let timer = Instant::now();
         ps.get_acc();
         // ps1.get_acc();
         // ps2.get_acc();
         // ps1.get_acc_p2p(&ps2);
-        let duration = now.elapsed();
+        let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
@@ -164,12 +164,12 @@ fn main() {
     }
 
     for _ in 0..1 {
-        let now = Instant::now();
+        let timer = Instant::now();
         ps.get_jrk();
         // ps1.get_jrk();
         // ps2.get_jrk();
         // ps1.get_jrk_p2p(&ps2);
-        let duration = now.elapsed();
+        let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
@@ -177,12 +177,12 @@ fn main() {
     }
 
     for _ in 0..1 {
-        let now = Instant::now();
+        let timer = Instant::now();
         ps.get_snp();
         // ps1.get_snp();
         // ps2.get_snp();
         // ps1.get_snp_p2p(&ps2);
-        let duration = now.elapsed();
+        let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
@@ -190,12 +190,12 @@ fn main() {
     }
 
     for _ in 0..1 {
-        let now = Instant::now();
+        let timer = Instant::now();
         ps.get_crk();
         // ps1.get_crk();
         // ps2.get_crk();
         // ps1.get_crk_p2p(&ps2);
-        let duration = now.elapsed();
+        let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.particles.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
@@ -214,62 +214,69 @@ fn main() {
     let mut psys = model.build(256, &mut rng);
 
     let tend = 10.0;
-    let mut tsim = 0.0;
+    let mut tnow = 0.0;
 
-    let eta = 0.75;
+    let eta = 0.5;
 
     let dtlog = 0.125;
+    let dtmax = 0.125;
 
     use ava::sim::{Integrator, TimeStepScheme::*};
 
     // use ava::sim::hermite::Hermite4;
     // let integrator = Hermite4 {
-    //     npec: 2,
+    //     npec: 1,
     //     eta: eta,
-    //     // time_step_scheme: Constant,
-    //     time_step_scheme: Adaptive { shared: true },
+    //     dtmax: dtmax,
+    //     // time_step_scheme: Constant { dt: eta * dtmax },
+    //     // time_step_scheme: Adaptive { shared: true },
+    //     time_step_scheme: Adaptive { shared: false },
     // };
 
     // use ava::sim::hermite::Hermite6;
     // let integrator = Hermite6 {
-    //     npec: 2,
+    //     npec: 1,
     //     eta: eta,
-    //     // time_step_scheme: Constant,
-    //     time_step_scheme: Adaptive { shared: true },
+    //     dtmax: dtmax,
+    //     // time_step_scheme: Constant { dt: eta * dtmax },
+    //     // time_step_scheme: Adaptive { shared: true },
+    //     time_step_scheme: Adaptive { shared: false },
     // };
 
     use ava::sim::hermite::Hermite8;
     let integrator = Hermite8 {
-        npec: 2,
+        npec: 1,
         eta: eta,
-        // time_step_scheme: Constant,
-        time_step_scheme: Adaptive { shared: true },
+        dtmax: dtmax,
+        // time_step_scheme: Constant { dt: eta * dtmax },
+        // time_step_scheme: Adaptive { shared: true },
+        time_step_scheme: Adaptive { shared: false },
     };
 
-    let now = Instant::now();
+    let timer = Instant::now();
     let ke = psys.kinectic_energy();
     let pe = psys.potential_energy();
     let te_0 = ke + pe;
     let mut te_n = te_0;
-    eprintln!("# system energy at t = {}: {:?}", tsim, te_0);
-    integrator.setup(&mut psys);
-    while tsim < tend {
-        if tsim % dtlog == 0.0 {
-            te_n = print_log(tsim, te_0, te_n, &psys, now.elapsed());
+    eprintln!("# system energy at t = {:?}: {:?}", tnow, te_0);
+    integrator.setup(&mut psys.particles[..]);
+    while tnow < tend {
+        if tnow % dtlog == 0.0 {
+            te_n = print_log(tnow, te_0, te_n, &psys, timer.elapsed());
         }
-        tsim += integrator.evolve(&mut psys);
+        tnow = integrator.evolve(&mut psys.particles[..]);
     }
-    if tsim % dtlog == 0.0 {
-        te_n = print_log(tsim, te_0, te_n, &psys, now.elapsed());
+    if tnow % dtlog == 0.0 {
+        te_n = print_log(tnow, te_0, te_n, &psys, timer.elapsed());
     }
-    eprintln!("# system energy at t = {}: {:?}", tsim, te_n);
-    eprintln!("# total simulation time: {:?}", now.elapsed());
+    eprintln!("# system energy at t = {:?}: {:?}", tnow, te_n);
+    eprintln!("# total simulation time: {:?}", timer.elapsed());
 }
 
 use ava::real::Real;
 use ava::sys::system::ParticleSystem;
 fn print_log(
-    tsim: Real,
+    tnow: Real,
     te_0: Real,
     te_n: Real,
     psys: &ParticleSystem,
@@ -286,7 +293,7 @@ fn print_log(
     let err_n = (te - te_n) / te_n;
     println!(
         "{:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<12.7e}",
-        tsim, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed as f64 * 1.0e-9
+        tnow, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed as f64 * 1.0e-9
     );
     te
 }

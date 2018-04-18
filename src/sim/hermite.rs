@@ -1,98 +1,126 @@
 use real::Real;
 use compute;
 use sys::particles::Particle;
-use sys::system::ParticleSystem;
 use super::{Integrator, TimeStepScheme::{self, *}};
 
-fn quantize_dt(dtr: Real, tnow: Real) -> Real {
-    let mut dtq = 1.0;
-    while dtq > dtr {
-        dtq *= 0.5;
-    }
-    while (tnow + dtq) % dtq != 0.0 {
-        dtq *= 0.5;
-    }
-    dtq
+fn to_power_of_two(dt: Real, dtmax: Real) -> Real {
+    let pow = dt.log2().floor();
+    let dtq = (2.0 as Real).powi(pow as i32);
+    dtq.min(dtmax)
 }
 
-fn set_constant_dt(eta: Real, psys: &mut [Particle]) {
-    let dtr = eta * 1.0;
-    let dtq = quantize_dt(dtr, 0.0);
-    for p in psys.iter_mut() {
-        p.dt = dtq;
+fn update_dtq(tnow: Real, dtold: Real, dtnew: Real, dtmax: Real) -> Real {
+    if dtnew < dtold {
+        0.5 * dtold
+    } else {
+        if dtnew > (2.0 * dtold) && tnow % (2.0 * dtold) == 0.0 {
+            (2.0 * dtold).min(dtmax)
+        } else {
+            dtold
+        }
     }
 }
 
 fn set_shared_dt(psys: &mut [Particle]) {
     let dt = psys[0].dt;
-    let dt = psys.iter().fold(dt, |dt, p| dt.min(p.dt));
     for p in psys.iter_mut() {
         p.dt = dt;
     }
 }
 
+fn get_nact(tnew: Real, psys: &[Particle]) -> usize {
+    let mut nact = 0;
+    for p in psys.iter() {
+        if p.tnow + p.dt == tnew {
+            nact += 1
+        } else {
+            break;
+        }
+    }
+    nact
+}
+
 trait Hermite: Integrator {
     const ORDER: u8;
 
-    fn predict(&self, psys: &mut [Particle]);
+    fn predict(&self, tnew: Real, psys: &mut [Particle]);
+    fn evaluate(&self, nact: usize, psys: &mut [Particle]);
     fn correct(&self, psys_old: &[Particle], psys_new: &mut [Particle]);
     fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle]);
 
-    fn pec(&self, npec: u8, psys: &mut ParticleSystem) -> Real {
-        let dt = psys.particles[0].dt;
-        let psys_old = psys.clone();
-        self.predict(&mut psys.particles[..]);
-        for _ in 0..npec {
-            self.correct(&psys_old.particles[..], &mut psys.particles[..]);
+    fn pec(
+        &self,
+        npec: u8,
+        dtmax: Real,
+        time_step_scheme: TimeStepScheme,
+        psys: &mut [Particle],
+    ) -> Real {
+        match time_step_scheme {
+            Constant { dt } => {
+                psys[0].dt = to_power_of_two(dt, dtmax);
+                set_shared_dt(&mut psys[..]);
+            }
+            Adaptive { shared } => {
+                if shared {
+                    set_shared_dt(&mut psys[..]);
+                }
+            }
         }
-        self.interpolate(&psys_old.particles[..], &mut psys.particles[..]);
-        dt
+        let tnew = psys[0].tnow + psys[0].dt;
+        let nact = get_nact(tnew, psys);
+        let mut psys_new = psys.to_vec();
+        self.predict(tnew, &mut psys_new[..]);
+        for _ in 0..npec {
+            self.evaluate(nact, &mut psys_new[..]);
+            self.correct(&psys[..nact], &mut psys_new[..nact]);
+        }
+        self.interpolate(&psys[..nact], &mut psys_new[..nact]);
+        psys_new[..nact].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        psys[..nact].clone_from_slice(&psys_new[..nact]);
+        tnew
     }
 }
 
 pub struct Hermite4 {
     pub npec: u8,
     pub eta: Real,
+    pub dtmax: Real,
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite4 {
-    fn setup(&self, psys: &mut ParticleSystem) {
+    fn setup(&self, psys: &mut [Particle]) {
         // Init forces
-        let (acc0, acc1) = compute::jrk::triangle(&psys.particles[..]);
-        for (i, p) in psys.particles.iter_mut().enumerate() {
-            for k in 0..3 {
-                p.acc0[k] = acc0[i][k];
-                p.acc1[k] = acc1[i][k];
-            }
-        }
+        self.evaluate(psys.len(), &mut psys[..]);
         // Init time-steps
-        for p in psys.particles.iter_mut() {
+        for p in psys.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let dtr = 0.125 * self.eta * (a0 / a1).sqrt();
-            p.dt = quantize_dt(dtr, p.tnow);
+            let dt = 0.0625 * self.eta * (a0 / a1).sqrt();
+            p.dt = to_power_of_two(dt, self.dtmax);
         }
+        // Init sorting by time-steps
+        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
-    fn evolve(&self, psys: &mut ParticleSystem) -> Real {
-        match self.time_step_scheme {
-            Constant => {
-                set_constant_dt(self.eta, &mut psys.particles[..]);
-            }
-            Adaptive { shared } => {
-                if shared {
-                    set_shared_dt(&mut psys.particles[..]);
-                }
-            }
-        }
-        self.pec(self.npec, psys)
+    fn evolve(&self, psys: &mut [Particle]) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
     }
 }
 impl Hermite for Hermite4 {
     const ORDER: u8 = 4;
 
-    fn predict(&self, psys: &mut [Particle]) {
+    fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
+        let (iiacc0, iiacc1) = compute::jrk::triangle(&psys[..nact]);
+        let ((ijacc0, ijacc1), _) = compute::jrk::rectangle(&psys[..nact], &psys[nact..]);
+        for (i, p) in psys[..nact].iter_mut().enumerate() {
+            for k in 0..3 {
+                p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];
+                p.acc1[k] = iiacc1[i][k] + ijacc1[i][k];
+            }
+        }
+    }
+    fn predict(&self, tnew: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
-            let dt = p.dt;
+            let dt = tnew - p.tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
@@ -110,8 +138,7 @@ impl Hermite for Hermite4 {
         }
     }
     fn correct(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
-        let (acc0, acc1) = compute::jrk::triangle(&psys_new[..]);
-        for (i, (pold, pnew)) in psys_old.iter().zip(psys_new.iter_mut()).enumerate() {
+        for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
 
@@ -122,9 +149,6 @@ impl Hermite for Hermite4 {
             let d1 = c1 * (1.0 / 3.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc0[i][k];
-                pnew.acc1[k] = acc1[i][k];
-
                 let a0p = d0 * (pnew.acc0[k] + pold.acc0[k]);
                 let a1m = d1 * (pnew.acc1[k] - pold.acc1[k]);
                 pnew.vel[k] = pold.vel[k] + dt * (a0p - a1m);
@@ -140,8 +164,6 @@ impl Hermite for Hermite4 {
             let dt = pnew.dt;
             let h = 0.5 * dt;
             let hinv = 1.0 / h;
-
-            pnew.tnow += dt;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -167,6 +189,7 @@ impl Hermite for Hermite4 {
                 acc2[k] = s2 * a2;
                 acc3[k] = s3 * a3;
             }
+            pnew.tnow += dt;
             // Update time-steps
             let a0 = pnew.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = pnew.acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -174,8 +197,8 @@ impl Hermite for Hermite4 {
             let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
-            let dtr = self.eta * (u / l).sqrt();
-            pnew.dt = quantize_dt(dtr, pnew.tnow);
+            let dtnew = self.eta * (u / l).sqrt();
+            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
         }
     }
 }
@@ -185,50 +208,46 @@ impl Hermite for Hermite4 {
 pub struct Hermite6 {
     pub npec: u8,
     pub eta: Real,
+    pub dtmax: Real,
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite6 {
-    fn setup(&self, psys: &mut ParticleSystem) {
+    fn setup(&self, psys: &mut [Particle]) {
         // Init forces
-        for _ in 0..2 {
-            let (acc0, acc1, acc2) = compute::snp::triangle(&psys.particles[..]);
-            for (i, p) in psys.particles.iter_mut().enumerate() {
-                for k in 0..3 {
-                    p.acc0[k] = acc0[i][k];
-                    p.acc1[k] = acc1[i][k];
-                    p.acc2[k] = acc2[i][k];
-                }
-            }
-        }
+        self.evaluate(psys.len(), &mut psys[..]);
+        self.evaluate(psys.len(), &mut psys[..]);
         // Init time-steps
-        for p in psys.particles.iter_mut() {
+        for p in psys.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             // let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let dtr = 0.125 * self.eta * (a0 / a2).sqrt().sqrt();
-            p.dt = quantize_dt(dtr, p.tnow);
+            let dt = 0.0625 * self.eta * (a0 / a2).sqrt().sqrt();
+            p.dt = to_power_of_two(dt, self.dtmax);
         }
+        // Init sorting by time-steps
+        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
-    fn evolve(&self, psys: &mut ParticleSystem) -> Real {
-        match self.time_step_scheme {
-            Constant => {
-                set_constant_dt(self.eta, &mut psys.particles[..]);
-            }
-            Adaptive { shared } => {
-                if shared {
-                    set_shared_dt(&mut psys.particles[..]);
-                }
-            }
-        }
-        self.pec(self.npec, psys)
+    fn evolve(&self, psys: &mut [Particle]) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
     }
 }
 impl Hermite for Hermite6 {
     const ORDER: u8 = 6;
 
-    fn predict(&self, psys: &mut [Particle]) {
+    fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
+        let (iiacc0, iiacc1, iiacc2) = compute::snp::triangle(&psys[..nact]);
+        let ((ijacc0, ijacc1, ijacc2), _) = compute::snp::rectangle(&psys[..nact], &psys[nact..]);
+        for (i, p) in psys[..nact].iter_mut().enumerate() {
+            for k in 0..3 {
+                p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];
+                p.acc1[k] = iiacc1[i][k] + ijacc1[i][k];
+                p.acc2[k] = iiacc2[i][k] + ijacc2[i][k];
+            }
+        }
+    }
+    fn predict(&self, tnew: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
-            let dt = p.dt;
+            let dt = tnew - p.tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
@@ -257,8 +276,7 @@ impl Hermite for Hermite6 {
         }
     }
     fn correct(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
-        let (acc0, acc1, acc2) = compute::snp::triangle(&psys_new[..]);
-        for (i, (pold, pnew)) in psys_old.iter().zip(psys_new.iter_mut()).enumerate() {
+        for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
 
@@ -271,10 +289,6 @@ impl Hermite for Hermite6 {
             let d2 = c2 * (2.0 / 15.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc0[i][k];
-                pnew.acc1[k] = acc1[i][k];
-                pnew.acc2[k] = acc2[i][k];
-
                 let a0p = d0 * (pnew.acc0[k] + pold.acc0[k]);
                 let a1m = d1 * (pnew.acc1[k] - pold.acc1[k]);
                 let a2p = d2 * (pnew.acc2[k] + pold.acc2[k]);
@@ -292,8 +306,6 @@ impl Hermite for Hermite6 {
             let dt = pnew.dt;
             let h = 0.5 * dt;
             let hinv = 1.0 / h;
-
-            pnew.tnow += dt;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -338,6 +350,7 @@ impl Hermite for Hermite6 {
 
                 pnew.acc3[k] = acc3[k];
             }
+            pnew.tnow += dt;
             // Update time-steps
             let a0 = pnew.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = pnew.acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -349,8 +362,8 @@ impl Hermite for Hermite6 {
             // let u = a2 + (a1 * a3).sqrt();
             // let u = a3 + (a2 * a4).sqrt();
             let l = a4 + (a3 * a5).sqrt();
-            let dtr = self.eta * (u / l).powf(1.0 / 6.0);
-            pnew.dt = quantize_dt(dtr, pnew.tnow);
+            let dtnew = self.eta * (u / l).powf(1.0 / 6.0);
+            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
         }
     }
 }
@@ -360,54 +373,51 @@ impl Hermite for Hermite6 {
 pub struct Hermite8 {
     pub npec: u8,
     pub eta: Real,
+    pub dtmax: Real,
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite8 {
-    fn setup(&self, psys: &mut ParticleSystem) {
+    fn setup(&self, psys: &mut [Particle]) {
         // Init forces
-        for _ in 0..2 {
-            let (acc0, acc1, acc2, acc3) = compute::crk::triangle(&psys.particles[..]);
-            for (i, p) in psys.particles.iter_mut().enumerate() {
-                for k in 0..3 {
-                    p.acc0[k] = acc0[i][k];
-                    p.acc1[k] = acc1[i][k];
-                    p.acc2[k] = acc2[i][k];
-                    p.acc3[k] = acc3[i][k];
-                }
-            }
-        }
+        self.evaluate(psys.len(), &mut psys[..]);
+        self.evaluate(psys.len(), &mut psys[..]);
         // Init time-steps
-        for p in psys.particles.iter_mut() {
+        for p in psys.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
             let a3 = p.acc3.iter().fold(0.0, |s, v| s + v * v);
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
-            let dtr = 0.125 * self.eta * (u / l).sqrt();
-            p.dt = quantize_dt(dtr, p.tnow);
+            let dt = 0.0625 * self.eta * (u / l).sqrt();
+            p.dt = to_power_of_two(dt, self.dtmax);
         }
+        // Init sorting by time-steps
+        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
-    fn evolve(&self, psys: &mut ParticleSystem) -> Real {
-        match self.time_step_scheme {
-            Constant => {
-                set_constant_dt(self.eta, &mut psys.particles[..]);
-            }
-            Adaptive { shared } => {
-                if shared {
-                    set_shared_dt(&mut psys.particles[..]);
-                }
-            }
-        }
-        self.pec(self.npec, psys)
+    fn evolve(&self, psys: &mut [Particle]) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
     }
 }
 impl Hermite for Hermite8 {
     const ORDER: u8 = 8;
 
-    fn predict(&self, psys: &mut [Particle]) {
+    fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
+        let (iiacc0, iiacc1, iiacc2, iiacc3) = compute::crk::triangle(&psys[..nact]);
+        let ((ijacc0, ijacc1, ijacc2, ijacc3), _) =
+            compute::crk::rectangle(&psys[..nact], &psys[nact..]);
+        for (i, p) in psys[..nact].iter_mut().enumerate() {
+            for k in 0..3 {
+                p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];
+                p.acc1[k] = iiacc1[i][k] + ijacc1[i][k];
+                p.acc2[k] = iiacc2[i][k] + ijacc2[i][k];
+                p.acc3[k] = iiacc3[i][k] + ijacc3[i][k];
+            }
+        }
+    }
+    fn predict(&self, tnew: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
-            let dt = p.dt;
+            let dt = tnew - p.tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
@@ -450,8 +460,7 @@ impl Hermite for Hermite8 {
         }
     }
     fn correct(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
-        let (acc0, acc1, acc2, acc3) = compute::crk::triangle(&psys_new[..]);
-        for (i, (pold, pnew)) in psys_old.iter().zip(psys_new.iter_mut()).enumerate() {
+        for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
 
@@ -466,11 +475,6 @@ impl Hermite for Hermite8 {
             let d3 = c3 * (2.0 / 35.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc0[i][k];
-                pnew.acc1[k] = acc1[i][k];
-                pnew.acc2[k] = acc2[i][k];
-                pnew.acc3[k] = acc3[i][k];
-
                 let a0p = d0 * (pnew.acc0[k] + pold.acc0[k]);
                 let a1m = d1 * (pnew.acc1[k] - pold.acc1[k]);
                 let a2p = d2 * (pnew.acc2[k] + pold.acc2[k]);
@@ -490,8 +494,6 @@ impl Hermite for Hermite8 {
             let dt = pnew.dt;
             let h = 0.5 * dt;
             let hinv = 1.0 / h;
-
-            pnew.tnow += dt;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -547,6 +549,7 @@ impl Hermite for Hermite8 {
                 pnew.acc4[k] = acc4[k];
                 pnew.acc5[k] = acc5[k];
             }
+            pnew.tnow += dt;
             // Update time-steps
             let a0 = pnew.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = pnew.acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -562,8 +565,8 @@ impl Hermite for Hermite8 {
             // let u = a4 + (a3 * a5).sqrt();
             // let u = a5 + (a4 * a6).sqrt();
             let l = a6 + (a5 * a7).sqrt();
-            let dtr = self.eta * (u / l).powf(1.0 / 10.0);
-            pnew.dt = quantize_dt(dtr, pnew.tnow);
+            let dtnew = self.eta * (u / l).powf(1.0 / 10.0);
+            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
         }
     }
 }
