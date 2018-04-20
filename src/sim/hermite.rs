@@ -55,32 +55,37 @@ trait Hermite: Integrator {
         time_step_scheme: TimeStepScheme,
         psys: &mut [Particle],
     ) -> Real {
-        match time_step_scheme {
-            Constant { dt } => {
-                psys[0].dt = to_power_of_two(dt, dtmax);
-                set_shared_dt(&mut psys[..]);
-            }
-            Adaptive { shared } => {
-                if shared {
+        let mut dtcum = 0.0;
+        while dtcum < dtmax {
+            match time_step_scheme {
+                Constant { dt } => {
+                    psys[0].dt = to_power_of_two(dt, dtmax);
                     set_shared_dt(&mut psys[..]);
                 }
+                Adaptive { shared } => {
+                    if shared {
+                        set_shared_dt(&mut psys[..]);
+                    }
+                }
             }
+            dtcum += psys[0].dt;
+            let tnew = psys[0].tnow + psys[0].dt;
+            let nact = get_nact(tnew, psys);
+            let mut psys_new = psys.to_vec();
+            self.predict(tnew, &mut psys_new[..]);
+            for _ in 0..npec {
+                self.evaluate(nact, &mut psys_new[..]);
+                self.correct(&psys[..nact], &mut psys_new[..nact]);
+            }
+            self.interpolate(&psys[..nact], &mut psys_new[..nact]);
+            psys_new[..nact].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+            psys[..nact].clone_from_slice(&psys_new[..nact]);
         }
-        let tnew = psys[0].tnow + psys[0].dt;
-        let nact = get_nact(tnew, psys);
-        let mut psys_new = psys.to_vec();
-        self.predict(tnew, &mut psys_new[..]);
-        for _ in 0..npec {
-            self.evaluate(nact, &mut psys_new[..]);
-            self.correct(&psys[..nact], &mut psys_new[..nact]);
-        }
-        self.interpolate(&psys[..nact], &mut psys_new[..nact]);
-        psys_new[..nact].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
-        psys[..nact].clone_from_slice(&psys_new[..nact]);
-        tnew
+        dtcum
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Hermite4 {
     pub npec: u8,
     pub eta: Real,
@@ -88,7 +93,7 @@ pub struct Hermite4 {
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite4 {
-    fn setup(&self, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut [Particle]) {
         // Init forces
         self.evaluate(psys.len(), &mut psys[..]);
         // Init time-steps
@@ -97,6 +102,7 @@ impl Integrator for Hermite4 {
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let dt = 0.0625 * self.eta * (a0 / a1).sqrt();
             p.dt = to_power_of_two(dt, self.dtmax);
+            p.tnow = tnow;
         }
         // Init sorting by time-steps
         psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
@@ -205,6 +211,7 @@ impl Hermite for Hermite4 {
 
 // --------------------
 
+#[derive(Debug, Copy, Clone)]
 pub struct Hermite6 {
     pub npec: u8,
     pub eta: Real,
@@ -212,7 +219,7 @@ pub struct Hermite6 {
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite6 {
-    fn setup(&self, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut [Particle]) {
         // Init forces
         self.evaluate(psys.len(), &mut psys[..]);
         self.evaluate(psys.len(), &mut psys[..]);
@@ -223,6 +230,7 @@ impl Integrator for Hermite6 {
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
             let dt = 0.0625 * self.eta * (a0 / a2).sqrt().sqrt();
             p.dt = to_power_of_two(dt, self.dtmax);
+            p.tnow = tnow;
         }
         // Init sorting by time-steps
         psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
@@ -370,6 +378,7 @@ impl Hermite for Hermite6 {
 
 // --------------------
 
+#[derive(Debug, Copy, Clone)]
 pub struct Hermite8 {
     pub npec: u8,
     pub eta: Real,
@@ -377,7 +386,7 @@ pub struct Hermite8 {
     pub time_step_scheme: TimeStepScheme,
 }
 impl Integrator for Hermite8 {
-    fn setup(&self, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut [Particle]) {
         // Init forces
         self.evaluate(psys.len(), &mut psys[..]);
         self.evaluate(psys.len(), &mut psys[..]);
@@ -391,6 +400,7 @@ impl Integrator for Hermite8 {
             let l = a2 + (a1 * a3).sqrt();
             let dt = 0.0625 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt, self.dtmax);
+            p.tnow = tnow;
         }
         // Init sorting by time-steps
         psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());

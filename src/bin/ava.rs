@@ -1,13 +1,12 @@
 extern crate ava;
 extern crate rand;
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use rand::{SeedableRng, StdRng};
 
 use ava::ics::Model;
 use ava::ics::sdp::Plummer;
-use ava::ics::imf::EqualMass;
-use ava::ics::imf::Maschberger2013;
+use ava::ics::imf::{EqualMass, Maschberger2013};
 
 fn main() {
     let mut rng: StdRng = SeedableRng::from_seed(&[1, 2, 3, 4][..]);
@@ -213,17 +212,18 @@ fn main() {
 
     let mut psys = model.build(256, &mut rng);
 
-    let tend = 10.0;
-    let mut tnow = 0.0;
-
     let eta = 0.5;
 
-    let dtlog = 0.125;
     let dtmax = 0.125;
+    let dtlog = 0.125;
 
-    use ava::sim::{Integrator, TimeStepScheme::*};
+    let tnow = 0.0;
+    let tend = 10.0;
 
-    // use ava::sim::hermite::Hermite4;
+    use ava::sim::Logger;
+    let logger = Logger::new(dtlog);
+
+    // use ava::sim::{TimeStepScheme::*, hermite::Hermite4};
     // let integrator = Hermite4 {
     //     npec: 1,
     //     eta: eta,
@@ -233,7 +233,7 @@ fn main() {
     //     time_step_scheme: Adaptive { shared: false },
     // };
 
-    // use ava::sim::hermite::Hermite6;
+    // use ava::sim::{TimeStepScheme::*, hermite::Hermite6};
     // let integrator = Hermite6 {
     //     npec: 1,
     //     eta: eta,
@@ -243,7 +243,7 @@ fn main() {
     //     time_step_scheme: Adaptive { shared: false },
     // };
 
-    use ava::sim::hermite::Hermite8;
+    use ava::sim::{TimeStepScheme::*, hermite::Hermite8};
     let integrator = Hermite8 {
         npec: 1,
         eta: eta,
@@ -253,49 +253,10 @@ fn main() {
         time_step_scheme: Adaptive { shared: false },
     };
 
-    let timer = Instant::now();
-    let ke = psys.kinectic_energy();
-    let pe = psys.potential_energy();
-    let te_0 = ke + pe;
-    let mut te_n = te_0;
-    eprintln!("# system energy at t = {:?}: {:?}", tnow, te_0);
-    integrator.setup(&mut psys.particles[..]);
-    while tnow < tend {
-        if tnow % dtlog == 0.0 {
-            te_n = print_log(tnow, te_0, te_n, &psys, timer.elapsed());
-        }
-        tnow = integrator.evolve(&mut psys.particles[..]);
-    }
-    if tnow % dtlog == 0.0 {
-        te_n = print_log(tnow, te_0, te_n, &psys, timer.elapsed());
-    }
-    eprintln!("# system energy at t = {:?}: {:?}", tnow, te_n);
-    eprintln!("# total simulation time: {:?}", timer.elapsed());
-}
-
-use ava::real::Real;
-use ava::sys::system::ParticleSystem;
-fn print_log(
-    tnow: Real,
-    te_0: Real,
-    te_n: Real,
-    psys: &ParticleSystem,
-    duration: Duration,
-) -> Real {
-    let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-    let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
-    let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
-    let ke = psys.kinectic_energy();
-    let pe = psys.potential_energy();
-    let te = ke + pe;
-    let ve = 2.0 * ke + pe;
-    let err_0 = (te - te_0) / te_0;
-    let err_n = (te - te_n) / te_n;
-    println!(
-        "{:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<+12.5e} {:<12.7e}",
-        tnow, ke, pe, ve, err_0, err_n, rcom, vcom, elapsed as f64 * 1.0e-9
-    );
-    te
+    use ava::sim::Simulation;
+    let mut sim = Simulation::new(logger, integrator);
+    sim.init(tnow, &mut psys);
+    sim.run(tend, &mut psys);
 }
 
 // -- end of file --
