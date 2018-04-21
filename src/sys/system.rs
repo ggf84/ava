@@ -11,6 +11,9 @@ impl ParticleSystem {
     pub fn new() -> Self {
         Default::default()
     }
+    pub fn len(&self) -> usize {
+        self.particles.len()
+    }
 }
 
 impl ParticleSystem {
@@ -181,15 +184,7 @@ impl ParticleSystem {
         self.particles.iter_mut().for_each(|p| p.mass /= mtot);
     }
 
-    pub fn set_eps(&mut self, eps: Real) {
-        let n = self.particles.len();
-        let mmean = 1.0 / n as Real;
-        for p in self.particles.iter_mut() {
-            p.eps = eps * (p.mass / mmean).cbrt();
-        }
-    }
-
-    pub fn scale_to_standard(&mut self, virial_ratio: Real) {
+    pub fn scale_to_virial(&mut self, virial_ratio: Real) -> (Real, Real) {
         assert!(virial_ratio > 0.0);
         assert!(virial_ratio < 1.0);
         let ke = self.kinectic_energy();
@@ -201,6 +196,11 @@ impl ParticleSystem {
             }
         }
         let ke = -virial_ratio * pe;
+        (ke, pe)
+    }
+
+    pub fn scale_to_standard(&mut self, virial_ratio: Real) {
+        let (ke, pe) = self.scale_to_virial(virial_ratio);
         let te = ke + pe;
         let r_scale = te / -0.25;
         let v_scale = 1.0 / r_scale.sqrt();
@@ -210,6 +210,22 @@ impl ParticleSystem {
                 p.vel[k] *= v_scale;
             }
         }
+    }
+
+    pub fn set_eps(&mut self, eps: Real) {
+        // compute the original value of the virial ratio
+        let ke = self.kinectic_energy();
+        let pe = self.potential_energy();
+        let virial_ratio = ke / -pe;
+
+        // set the new eps
+        let mmean = self.com_mass() / self.len() as Real;
+        for p in self.particles.iter_mut() {
+            p.eps = eps * (p.mass / mmean).cbrt();
+        }
+
+        // adjust the virial ratio to its original value
+        self.scale_to_virial(virial_ratio);
     }
 }
 

@@ -144,7 +144,7 @@ fn main() {
         // ps1.get_phi_p2p(&ps2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.particles.len() as f64;
+        let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("phi: {:?} {:.5?}", duration, ns_loop);
     }
@@ -157,7 +157,7 @@ fn main() {
         // ps1.get_acc_p2p(&ps2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.particles.len() as f64;
+        let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
     }
@@ -170,7 +170,7 @@ fn main() {
         // ps1.get_jrk_p2p(&ps2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.particles.len() as f64;
+        let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
     }
@@ -183,7 +183,7 @@ fn main() {
         // ps1.get_snp_p2p(&ps2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.particles.len() as f64;
+        let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
     }
@@ -196,7 +196,7 @@ fn main() {
         // ps1.get_crk_p2p(&ps2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.particles.len() as f64;
+        let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
     }
@@ -210,7 +210,9 @@ fn main() {
     let sdp = Plummer::new();
     let model = Model::new(imf, sdp);
 
-    let mut psys = model.build(256, &mut rng);
+    let n = 256.0;
+    let mut psys = model.build(n as usize, &mut rng);
+    psys.set_eps(4.0 / n);
 
     let eta = 0.5;
 

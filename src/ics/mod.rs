@@ -1,10 +1,10 @@
-pub mod imf;
-pub mod sdp;
-
 use rand::Rng;
 use real::{consts, Real};
 use sys::particles::Particle;
 use sys::system::ParticleSystem;
+
+pub mod imf;
+pub mod sdp;
 
 pub trait Sampler {
     type Output;
@@ -34,7 +34,6 @@ where
             ps.particles.push(particle);
         }
         ps.scale_mass();
-        ps.set_eps(4.0 / n as Real);
         ps.com_to_origin();
         ps.scale_to_standard(0.5);
         ps
