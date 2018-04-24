@@ -1,36 +1,26 @@
 use real::Real;
 use compute;
 use sys::particles::Particle;
-use super::{Integrator, TimeStepScheme::{self, *}};
+use sys::system::ParticleSystem;
+use super::{to_power_of_two, Counter, Integrator, TimeStepScheme::{self, *}};
 
-fn to_power_of_two(dt: Real, dtmax: Real) -> Real {
-    let pow = dt.log2().floor();
-    let dtq = (2.0 as Real).powi(pow as i32);
-    dtq.min(dtmax)
-}
-
-fn update_dtq(tnow: Real, dtold: Real, dtnew: Real, dtmax: Real) -> Real {
-    if dtnew < dtold {
-        0.5 * dtold
-    } else {
-        if dtnew > (2.0 * dtold) && tnow % (2.0 * dtold) == 0.0 {
-            (2.0 * dtold).min(dtmax)
-        } else {
-            dtold
-        }
-    }
-}
-
-fn set_shared_dt(psys: &mut [Particle]) {
-    let dt = psys[0].dt;
-    for p in psys.iter_mut() {
+fn set_shared_dt(dt: Real, psys: &mut ParticleSystem) {
+    for p in psys.particles.iter_mut() {
         p.dt = dt;
     }
 }
 
-fn get_nact(tnew: Real, psys: &[Particle]) -> usize {
+fn calc_dtlim(tnew: Real, dtmax: Real) -> Real {
+    let mut dtlim = dtmax;
+    while tnew % dtlim != 0.0 {
+        dtlim *= 0.5;
+    }
+    dtlim
+}
+
+fn count_nact(tnew: Real, psys: &ParticleSystem) -> usize {
     let mut nact = 0;
-    for p in psys.iter() {
+    for p in psys.particles.iter() {
         if p.tnow + p.dt == tnew {
             nact += 1
         } else {
@@ -40,75 +30,105 @@ fn get_nact(tnew: Real, psys: &[Particle]) -> usize {
     nact
 }
 
+fn sort_by_dt(nact: usize, psys: &mut ParticleSystem) {
+    psys.particles[..nact].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+}
+
 trait Hermite: Integrator {
     const ORDER: u8;
 
     fn predict(&self, tnew: Real, psys: &mut [Particle]);
     fn evaluate(&self, nact: usize, psys: &mut [Particle]);
     fn correct(&self, psys_old: &[Particle], psys_new: &mut [Particle]);
-    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle]);
+    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle], dtlim: Real);
 
     fn pec(
         &self,
         npec: u8,
         dtmax: Real,
         time_step_scheme: TimeStepScheme,
-        psys: &mut [Particle],
+        psys: &mut ParticleSystem,
+        counter: &mut Counter,
     ) -> Real {
-        let mut dtcum = 0.0;
-        while dtcum < dtmax {
+        let mut tt = 0.0;
+        while tt < dtmax {
             match time_step_scheme {
                 Constant { dt } => {
-                    psys[0].dt = to_power_of_two(dt, dtmax);
-                    set_shared_dt(&mut psys[..]);
+                    set_shared_dt(dt, psys);
                 }
                 Adaptive { shared } => {
                     if shared {
-                        set_shared_dt(&mut psys[..]);
+                        let dt = psys.particles[0].dt;
+                        set_shared_dt(dt, psys);
                     }
                 }
             }
-            dtcum += psys[0].dt;
-            let tnew = psys[0].tnow + psys[0].dt;
-            let nact = get_nact(tnew, psys);
-            let mut psys_new = psys.to_vec();
-            self.predict(tnew, &mut psys_new[..]);
+            let dt = psys.particles[0].dt;
+            let tnow = psys.particles[0].tnow;
+            let tnew = tnow + dt;
+            let dtlim = calc_dtlim(tnew, dtmax);
+            let nact = count_nact(tnew, psys);
+            let mut psys_new = psys.clone();
+            self.predict(tnew, &mut psys_new.particles[..]);
             for _ in 0..npec {
-                self.evaluate(nact, &mut psys_new[..]);
-                self.correct(&psys[..nact], &mut psys_new[..nact]);
+                self.evaluate(nact, &mut psys_new.particles[..]);
+                self.correct(&psys.particles[..nact], &mut psys_new.particles[..nact]);
             }
-            self.interpolate(&psys[..nact], &mut psys_new[..nact]);
-            psys_new[..nact].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
-            psys[..nact].clone_from_slice(&psys_new[..nact]);
+            self.interpolate(
+                &psys.particles[..nact],
+                &mut psys_new.particles[..nact],
+                dtlim,
+            );
+            psys.particles[..nact].clone_from_slice(&psys_new.particles[..nact]);
+            sort_by_dt(nact, psys);
+            tt += dt;
+            counter.bsteps += 1;
+            counter.isteps += nact;
         }
-        dtcum
+        tt
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct Hermite4 {
-    pub npec: u8,
-    pub eta: Real,
-    pub dtmax: Real,
-    pub time_step_scheme: TimeStepScheme,
+    npec: u8,
+    eta: Real,
+    dtmax: Real,
+    time_step_scheme: TimeStepScheme,
+}
+impl Hermite4 {
+    pub fn new(npec: u8, eta: Real, dtmax: Real, time_step_scheme: TimeStepScheme) -> Hermite4 {
+        let time_step_scheme = match time_step_scheme {
+            Constant { dt } => Constant {
+                dt: to_power_of_two(dt).min(dtmax),
+            },
+            Adaptive { shared } => Adaptive { shared },
+        };
+        Hermite4 {
+            npec: npec,
+            eta: eta,
+            dtmax: dtmax,
+            time_step_scheme: time_step_scheme,
+        }
+    }
 }
 impl Integrator for Hermite4 {
-    fn init(&self, tnow: Real, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut ParticleSystem) {
         // Init forces
-        self.evaluate(psys.len(), &mut psys[..]);
+        self.evaluate(psys.len(), &mut psys.particles[..]);
         // Init time-steps
-        for p in psys.iter_mut() {
+        for p in psys.particles.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let dt = 0.0625 * self.eta * (a0 / a1).sqrt();
-            p.dt = to_power_of_two(dt, self.dtmax);
+            let dt = 0.125 * self.eta * (a0 / a1).sqrt();
+            p.dt = to_power_of_two(dt).min(self.dtmax);
             p.tnow = tnow;
         }
-        // Init sorting by time-steps
-        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        // Sort particles by time-steps
+        sort_by_dt(psys.len(), psys);
     }
-    fn evolve(&self, psys: &mut [Particle]) -> Real {
-        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
+    fn evolve(&self, psys: &mut ParticleSystem, counter: &mut Counter) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys, counter)
     }
 }
 impl Hermite for Hermite4 {
@@ -165,7 +185,7 @@ impl Hermite for Hermite4 {
             }
         }
     }
-    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
+    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle], dtlim: Real) {
         for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
@@ -204,39 +224,55 @@ impl Hermite for Hermite4 {
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
             let dtnew = self.eta * (u / l).sqrt();
-            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
+            pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }
     }
 }
 
 // --------------------
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct Hermite6 {
-    pub npec: u8,
-    pub eta: Real,
-    pub dtmax: Real,
-    pub time_step_scheme: TimeStepScheme,
+    npec: u8,
+    eta: Real,
+    dtmax: Real,
+    time_step_scheme: TimeStepScheme,
+}
+impl Hermite6 {
+    pub fn new(npec: u8, eta: Real, dtmax: Real, time_step_scheme: TimeStepScheme) -> Hermite6 {
+        let time_step_scheme = match time_step_scheme {
+            Constant { dt } => Constant {
+                dt: to_power_of_two(dt).min(dtmax),
+            },
+            Adaptive { shared } => Adaptive { shared },
+        };
+        Hermite6 {
+            npec: npec,
+            eta: eta,
+            dtmax: dtmax,
+            time_step_scheme: time_step_scheme,
+        }
+    }
 }
 impl Integrator for Hermite6 {
-    fn init(&self, tnow: Real, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut ParticleSystem) {
         // Init forces
-        self.evaluate(psys.len(), &mut psys[..]);
-        self.evaluate(psys.len(), &mut psys[..]);
+        self.evaluate(psys.len(), &mut psys.particles[..]);
+        self.evaluate(psys.len(), &mut psys.particles[..]);
         // Init time-steps
-        for p in psys.iter_mut() {
+        for p in psys.particles.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             // let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let dt = 0.0625 * self.eta * (a0 / a2).sqrt().sqrt();
-            p.dt = to_power_of_two(dt, self.dtmax);
+            let dt = 0.125 * self.eta * (a0 / a2).sqrt().sqrt();
+            p.dt = to_power_of_two(dt).min(self.dtmax);
             p.tnow = tnow;
         }
-        // Init sorting by time-steps
-        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        // Sort particles by time-steps
+        sort_by_dt(psys.len(), psys);
     }
-    fn evolve(&self, psys: &mut [Particle]) -> Real {
-        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
+    fn evolve(&self, psys: &mut ParticleSystem, counter: &mut Counter) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys, counter)
     }
 }
 impl Hermite for Hermite6 {
@@ -309,7 +345,7 @@ impl Hermite for Hermite6 {
             }
         }
     }
-    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
+    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle], dtlim: Real) {
         for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
@@ -371,42 +407,58 @@ impl Hermite for Hermite6 {
             // let u = a3 + (a2 * a4).sqrt();
             let l = a4 + (a3 * a5).sqrt();
             let dtnew = self.eta * (u / l).powf(1.0 / 6.0);
-            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
+            pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }
     }
 }
 
 // --------------------
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct Hermite8 {
-    pub npec: u8,
-    pub eta: Real,
-    pub dtmax: Real,
-    pub time_step_scheme: TimeStepScheme,
+    npec: u8,
+    eta: Real,
+    dtmax: Real,
+    time_step_scheme: TimeStepScheme,
+}
+impl Hermite8 {
+    pub fn new(npec: u8, eta: Real, dtmax: Real, time_step_scheme: TimeStepScheme) -> Hermite8 {
+        let time_step_scheme = match time_step_scheme {
+            Constant { dt } => Constant {
+                dt: to_power_of_two(dt).min(dtmax),
+            },
+            Adaptive { shared } => Adaptive { shared },
+        };
+        Hermite8 {
+            npec: npec,
+            eta: eta,
+            dtmax: dtmax,
+            time_step_scheme: time_step_scheme,
+        }
+    }
 }
 impl Integrator for Hermite8 {
-    fn init(&self, tnow: Real, psys: &mut [Particle]) {
+    fn init(&self, tnow: Real, psys: &mut ParticleSystem) {
         // Init forces
-        self.evaluate(psys.len(), &mut psys[..]);
-        self.evaluate(psys.len(), &mut psys[..]);
+        self.evaluate(psys.len(), &mut psys.particles[..]);
+        self.evaluate(psys.len(), &mut psys.particles[..]);
         // Init time-steps
-        for p in psys.iter_mut() {
+        for p in psys.particles.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
             let a3 = p.acc3.iter().fold(0.0, |s, v| s + v * v);
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
-            let dt = 0.0625 * self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dt, self.dtmax);
+            let dt = 0.125 * self.eta * (u / l).sqrt();
+            p.dt = to_power_of_two(dt).min(self.dtmax);
             p.tnow = tnow;
         }
-        // Init sorting by time-steps
-        psys.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        // Sort particles by time-steps
+        sort_by_dt(psys.len(), psys);
     }
-    fn evolve(&self, psys: &mut [Particle]) -> Real {
-        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys)
+    fn evolve(&self, psys: &mut ParticleSystem, counter: &mut Counter) -> Real {
+        self.pec(self.npec, self.dtmax, self.time_step_scheme, psys, counter)
     }
 }
 impl Hermite for Hermite8 {
@@ -499,7 +551,7 @@ impl Hermite for Hermite8 {
             }
         }
     }
-    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle]) {
+    fn interpolate(&self, psys_old: &[Particle], psys_new: &mut [Particle], dtlim: Real) {
         for (pold, pnew) in psys_old.iter().zip(psys_new.iter_mut()) {
             let dt = pnew.dt;
             let h = 0.5 * dt;
@@ -576,7 +628,7 @@ impl Hermite for Hermite8 {
             // let u = a5 + (a4 * a6).sqrt();
             let l = a6 + (a5 * a7).sqrt();
             let dtnew = self.eta * (u / l).powf(1.0 / 10.0);
-            pnew.dt = update_dtq(pnew.tnow, pnew.dt, dtnew, self.dtmax);
+            pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }
     }
 }

@@ -216,47 +216,29 @@ fn main() {
 
     let eta = 0.5;
 
-    let dtmax = 0.125;
+    let dtmax = 0.0625;
     let dtlog = 0.125;
 
     let tnow = 0.0;
     let tend = 10.0;
 
-    use ava::sim::Logger;
-    let logger = Logger::new(dtlog);
-
     // use ava::sim::{TimeStepScheme::*, hermite::Hermite4};
-    // let integrator = Hermite4 {
-    //     npec: 1,
-    //     eta: eta,
-    //     dtmax: dtmax,
-    //     // time_step_scheme: Constant { dt: eta * dtmax },
-    //     // time_step_scheme: Adaptive { shared: true },
-    //     time_step_scheme: Adaptive { shared: false },
-    // };
+    // let integrator = Hermite4::new(1, eta, dtmax, Constant { dt: eta * dtmax });
+    // let integrator = Hermite4::new(1, eta, dtmax, Adaptive { shared: true });
+    // let integrator = Hermite4::new(1, eta, dtmax, Adaptive { shared: false });
 
     // use ava::sim::{TimeStepScheme::*, hermite::Hermite6};
-    // let integrator = Hermite6 {
-    //     npec: 1,
-    //     eta: eta,
-    //     dtmax: dtmax,
-    //     // time_step_scheme: Constant { dt: eta * dtmax },
-    //     // time_step_scheme: Adaptive { shared: true },
-    //     time_step_scheme: Adaptive { shared: false },
-    // };
+    // let integrator = Hermite6::new(1, eta, dtmax, Constant { dt: eta * dtmax });
+    // let integrator = Hermite6::new(1, eta, dtmax, Adaptive { shared: true });
+    // let integrator = Hermite6::new(1, eta, dtmax, Adaptive { shared: false });
 
     use ava::sim::{TimeStepScheme::*, hermite::Hermite8};
-    let integrator = Hermite8 {
-        npec: 1,
-        eta: eta,
-        dtmax: dtmax,
-        // time_step_scheme: Constant { dt: eta * dtmax },
-        // time_step_scheme: Adaptive { shared: true },
-        time_step_scheme: Adaptive { shared: false },
-    };
+    // let integrator = Hermite8::new(1, eta, dtmax, Constant { dt: eta * dtmax });
+    // let integrator = Hermite8::new(1, eta, dtmax, Adaptive { shared: true });
+    let integrator = Hermite8::new(1, eta, dtmax, Adaptive { shared: false });
 
     use ava::sim::Simulation;
-    let mut sim = Simulation::new(logger, integrator);
+    let mut sim = Simulation::new(integrator, dtlog);
     sim.init(tnow, &mut psys);
     sim.run(tend, &mut psys);
 }
