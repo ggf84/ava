@@ -1,7 +1,6 @@
 use rayon;
 use real::Real;
 use std::mem::size_of;
-use std::ops::{Deref, DerefMut};
 
 pub mod acc;
 pub mod crk;
@@ -10,21 +9,6 @@ pub mod phi;
 pub mod snp;
 
 const TILE: usize = 16 / size_of::<Real>();
-
-#[repr(align(16))]
-#[derive(Debug, Default)]
-struct Aligned<T>(T);
-impl<T> Deref for Aligned<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl<T> DerefMut for Aligned<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 trait SplitAt {
     type Output: ?Sized;
