@@ -27,8 +27,7 @@ fn main() {
         println!();
     }
     */
-    let ke = ps.kinectic_energy();
-    let pe = ps.potential_energy();
+    let (ke, pe) = ps.energies();
     eprintln!("{:?} {:?} {:?}", ke, pe, ke + pe);
     eprintln!(
         "{:#?} {:#?} {:#?}",
@@ -138,15 +137,14 @@ fn main() {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.get_phi();
-        // ps1.get_phi();
-        // ps2.get_phi();
-        // ps1.get_phi_p2p(&ps2);
+        ps.energies();
+        // ps1.energies();
+        // ps2.energies();
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
         let n = ps.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
-        eprintln!("phi: {:?} {:.5?}", duration, ns_loop);
+        eprintln!("energies: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {

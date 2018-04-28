@@ -17,15 +17,17 @@ impl ParticleSystem {
 }
 
 impl ParticleSystem {
-    /// Compute the gravitational potential for each particle in the system due to itself.
-    pub fn get_phi(&self) -> Vec<Real> {
-        compute::phi::triangle(&self.particles[..])
+    /// Compute the kinetic and potential energies of the system.
+    pub fn energies(&self) -> (Real, Real) {
+        let (ke, pe) = compute::energy::triangle(&self.particles[..]);
+        let ke = 0.5 * ke.iter().sum::<Real>();
+        let pe = 0.5 * pe.iter().sum::<Real>();
+        let ke = 0.5 * ke / self.com_mass();
+        (ke, pe)
     }
-    /// Compute the gravitational potential for each particle in the system due to 'other' system.
-    pub fn get_phi_p2p(&self, other: &Self) -> (Vec<Real>, Vec<Real>) {
-        compute::phi::rectangle(&self.particles[..], &other.particles[..])
-    }
+}
 
+impl ParticleSystem {
     /// Compute the gravitational acceleration's (0)-derivative for each particle in the system due to itself.
     pub fn get_acc(&self) -> (Vec<[Real; 3]>,) {
         compute::acc::triangle(&self.particles[..])
@@ -98,31 +100,6 @@ impl ParticleSystem {
     }
 }
 
-impl ParticleSystem {
-    /// Compute the kinetic energy of the system
-    pub fn kinectic_energy(&self) -> Real {
-        let mut ke = 0.0;
-        for p in self.particles.iter() {
-            let mut v2 = 0.0;
-            for k in 0..3 {
-                v2 += p.vel[k] * p.vel[k];
-            }
-            ke += p.mass * v2;
-        }
-        0.5 * ke
-    }
-    /// Compute the potential energy of the system
-    pub fn potential_energy(&self) -> Real {
-        let phi = self.get_phi();
-        let pe = self.particles
-            .iter()
-            .zip(phi.iter())
-            .map(|(p, phi)| p.mass * phi)
-            .sum::<Real>();
-        0.5 * pe
-    }
-}
-
 /// Methods for center-of-mass determination and adjustment.
 impl ParticleSystem {
     /// Get center-of-mass mass (a.k.a. total mass).
@@ -187,8 +164,7 @@ impl ParticleSystem {
     pub fn scale_to_virial(&mut self, virial_ratio: Real) -> (Real, Real) {
         assert!(virial_ratio > 0.0);
         assert!(virial_ratio < 1.0);
-        let ke = self.kinectic_energy();
-        let pe = self.potential_energy();
+        let (ke, pe) = self.energies();
         let v_scale = (-virial_ratio * pe / ke).sqrt();
         for p in self.particles.iter_mut() {
             for k in 0..3 {
@@ -214,8 +190,7 @@ impl ParticleSystem {
 
     pub fn set_eps(&mut self, eps: Real) {
         // compute the original value of the virial ratio
-        let ke = self.kinectic_energy();
-        let pe = self.potential_energy();
+        let (ke, pe) = self.energies();
         let virial_ratio = ke / -pe;
 
         // set the new eps

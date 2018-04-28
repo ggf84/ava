@@ -39,8 +39,7 @@ pub struct Logger {
 }
 impl Logger {
     fn init(&mut self, psys: &ParticleSystem) {
-        let ke = psys.kinectic_energy();
-        let pe = psys.potential_energy();
+        let (ke, pe) = psys.energies();
         let te = ke + pe;
         self.te_0 = te;
         self.te_n = te;
@@ -85,8 +84,7 @@ impl Logger {
     fn log(&mut self, tnow: Real, psys: &ParticleSystem) {
         let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
         let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
-        let ke = psys.kinectic_energy();
-        let pe = psys.potential_energy();
+        let (ke, pe) = psys.energies();
         let te = ke + pe;
         let ve = 2.0 * ke + pe;
         let err_0 = (te - self.te_0) / self.te_0;

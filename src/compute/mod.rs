@@ -5,8 +5,8 @@ use std::mem::size_of;
 pub mod acc;
 pub mod crk;
 pub mod jrk;
-pub mod phi;
 pub mod snp;
+pub mod energy;
 
 const TILE: usize = 16 / size_of::<Real>();
 

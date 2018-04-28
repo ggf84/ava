@@ -58,16 +58,16 @@ fn create_particle_system(n: usize, seed: usize) -> ParticleSystem {
 const N: usize = 1024;
 
 #[bench]
-fn phi_triangle(b: &mut Bencher) {
+fn energy_triangle(b: &mut Bencher) {
     let ps = create_particle_system(N, 0);
-    b.iter(|| compute::phi::triangle(&ps.particles[..]));
+    b.iter(|| compute::energy::triangle(&ps.particles[..]));
 }
 
 #[bench]
-fn phi_rectangle(b: &mut Bencher) {
+fn energy_rectangle(b: &mut Bencher) {
     let ps1 = create_particle_system(N, 1);
     let ps2 = create_particle_system(N / 2, 2);
-    b.iter(|| compute::phi::rectangle(&ps1.particles[..], &ps2.particles[..]));
+    b.iter(|| compute::energy::rectangle(&ps1.particles[..], &ps2.particles[..]));
 }
 
 #[bench]
