@@ -28,17 +28,22 @@ impl Crk {
         let mut dr1: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut dr2: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut dr3: [[[Real; TILE]; TILE]; 3] = Default::default();
-        let mut s0: [[Real; TILE]; TILE] = Default::default();
-        let mut s1: [[Real; TILE]; TILE] = Default::default();
-        let mut s2: [[Real; TILE]; TILE] = Default::default();
-        let mut s3: [[Real; TILE]; TILE] = Default::default();
+        let mut s00: [[Real; TILE]; TILE] = Default::default();
+        let mut s01: [[Real; TILE]; TILE] = Default::default();
+        let mut s02: [[Real; TILE]; TILE] = Default::default();
+        let mut s03: [[Real; TILE]; TILE] = Default::default();
         let mut s11: [[Real; TILE]; TILE] = Default::default();
         let mut s12: [[Real; TILE]; TILE] = Default::default();
-        let mut q32: [[Real; TILE]; TILE] = Default::default();
-        let mut q31: [[Real; TILE]; TILE] = Default::default();
-        let mut q21: [[Real; TILE]; TILE] = Default::default();
+        let mut q01: [[Real; TILE]; TILE] = Default::default();
+        let mut q02: [[Real; TILE]; TILE] = Default::default();
+        let mut q03: [[Real; TILE]; TILE] = Default::default();
+        let mut q12: [[Real; TILE]; TILE] = Default::default();
+        let mut q13: [[Real; TILE]; TILE] = Default::default();
+        let mut q23: [[Real; TILE]; TILE] = Default::default();
+        let mut rinv1: [[Real; TILE]; TILE] = Default::default();
         let mut rinv2: [[Real; TILE]; TILE] = Default::default();
-        let mut rinv3: [[Real; TILE]; TILE] = Default::default();
+        let mut mm: [[Real; TILE]; TILE] = Default::default();
+        let mut mm_r3: [[Real; TILE]; TILE] = Default::default();
 
         loop3(3, TILE, TILE, |k, i, j| {
             dr0[k][i][j] = ip.r0[k][j ^ i] - jp.r0[k][j];
@@ -54,141 +59,142 @@ impl Crk {
         });
 
         loop2(TILE, TILE, |i, j| {
-            s0[i][j] = ip.eps[j ^ i] * jp.eps[j];
+            s00[i][j] = ip.eps[j ^ i] * jp.eps[j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            s0[i][j] += dr0[k][i][j] * dr0[k][i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            rinv3[i][j] = ip.mass[j ^ i] * jp.mass[j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            rinv2[i][j] = s0[i][j].recip();
+            s00[i][j] += dr0[k][i][j] * dr0[k][i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            s1[i][j] = 0.0;
+            s01[i][j] = 0.0;
         });
-        loop2(TILE, TILE, |i, j| {
-            s2[i][j] = 0.0;
+        loop3(3, TILE, TILE, |k, i, j| {
+            s01[i][j] += dr0[k][i][j] * dr1[k][i][j];
         });
+
         loop2(TILE, TILE, |i, j| {
-            s3[i][j] = 0.0;
+            s02[i][j] = 0.0;
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            s02[i][j] += dr0[k][i][j] * dr2[k][i][j];
         });
         loop2(TILE, TILE, |i, j| {
             s11[i][j] = 0.0;
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            s11[i][j] += dr1[k][i][j] * dr1[k][i][j];
+        });
+        loop2(TILE, TILE, |i, j| {
+            s02[i][j] += s11[i][j];
+        });
+
+        loop2(TILE, TILE, |i, j| {
+            s03[i][j] = 0.0;
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            s03[i][j] += dr0[k][i][j] * dr3[k][i][j];
         });
         loop2(TILE, TILE, |i, j| {
             s12[i][j] = 0.0;
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            s1[i][j] += dr0[k][i][j] * dr1[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            s2[i][j] += dr0[k][i][j] * dr2[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            s3[i][j] += dr0[k][i][j] * dr3[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            s11[i][j] += dr1[k][i][j] * dr1[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
             s12[i][j] += dr1[k][i][j] * dr2[k][i][j];
         });
-
         loop2(TILE, TILE, |i, j| {
-            rinv3[i][j] *= rinv2[i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            rinv3[i][j] *= rinv2[i][j].sqrt();
+            s03[i][j] += 3.0 * s12[i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            s2[i][j] += s11[i][j];
+            mm[i][j] = ip.mass[j ^ i] * jp.mass[j];
         });
         loop2(TILE, TILE, |i, j| {
-            s3[i][j] += 3.0 * s12[i][j];
+            rinv2[i][j] = s00[i][j].recip();
         });
-
+        loop2(TILE, TILE, |i, j| {
+            rinv1[i][j] = rinv2[i][j].sqrt();
+        });
+        loop2(TILE, TILE, |i, j| {
+            mm_r3[i][j] = mm[i][j] * rinv2[i][j] * rinv1[i][j];
+        });
         loop2(TILE, TILE, |i, j| {
             rinv2[i][j] *= 3.0;
         });
+
         loop2(TILE, TILE, |i, j| {
-            s1[i][j] *= rinv2[i][j];
+            q01[i][j] = rinv2[i][j] * s01[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            s2[i][j] *= rinv2[i][j];
+            q02[i][j] = rinv2[i][j] * s02[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            s3[i][j] *= rinv2[i][j];
+            q03[i][j] = rinv2[i][j] * s03[i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            s3[i][j] -= CQ31 * s1[i][j] * s2[i][j];
+            q03[i][j] -= (CQ31 * q02[i][j]) * q01[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            s2[i][j] -= CQ21 * s1[i][j] * s1[i][j];
+            q02[i][j] -= (CQ21 * q01[i][j]) * q01[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            s3[i][j] -= CQ32 * s1[i][j] * s2[i][j];
+            q03[i][j] -= (CQ32 * q01[i][j]) * q02[i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            q32[i][j] = 3.0 * s1[i][j];
+            q12[i][j] = 2.0 * q01[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            q31[i][j] = 3.0 * s2[i][j];
+            q13[i][j] = 3.0 * q02[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            q21[i][j] = 2.0 * s1[i][j];
+            q23[i][j] = 3.0 * q01[i][j];
         });
 
         loop3(3, TILE, TILE, |k, i, j| {
-            dr3[k][i][j] -= q32[i][j] * dr2[k][i][j];
+            dr3[k][i][j] -= q23[i][j] * dr2[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            dr3[k][i][j] -= q31[i][j] * dr1[k][i][j];
+            dr3[k][i][j] -= q13[i][j] * dr1[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            dr2[k][i][j] -= q21[i][j] * dr1[k][i][j];
+            dr3[k][i][j] -= q03[i][j] * dr0[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            dr3[k][i][j] -= s3[i][j] * dr0[k][i][j];
+            dr2[k][i][j] -= q12[i][j] * dr1[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            dr2[k][i][j] -= s2[i][j] * dr0[k][i][j];
+            dr2[k][i][j] -= q02[i][j] * dr0[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            dr1[k][i][j] -= s1[i][j] * dr0[k][i][j];
-        });
-
-        loop3(3, TILE, TILE, |k, i, j| {
-            ip.a0[k][j ^ i] -= rinv3[i][j] * dr0[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            jp.a0[k][j] += rinv3[i][j] * dr0[k][i][j];
+            dr1[k][i][j] -= q01[i][j] * dr0[k][i][j];
         });
 
         loop3(3, TILE, TILE, |k, i, j| {
-            ip.a1[k][j ^ i] -= rinv3[i][j] * dr1[k][i][j];
+            ip.a0[k][j ^ i] -= mm_r3[i][j] * dr0[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            jp.a1[k][j] += rinv3[i][j] * dr1[k][i][j];
-        });
-
-        loop3(3, TILE, TILE, |k, i, j| {
-            ip.a2[k][j ^ i] -= rinv3[i][j] * dr2[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            jp.a2[k][j] += rinv3[i][j] * dr2[k][i][j];
+            jp.a0[k][j] += mm_r3[i][j] * dr0[k][i][j];
         });
 
         loop3(3, TILE, TILE, |k, i, j| {
-            ip.a3[k][j ^ i] -= rinv3[i][j] * dr3[k][i][j];
+            ip.a1[k][j ^ i] -= mm_r3[i][j] * dr1[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            jp.a3[k][j] += rinv3[i][j] * dr3[k][i][j];
+            jp.a1[k][j] += mm_r3[i][j] * dr1[k][i][j];
+        });
+
+        loop3(3, TILE, TILE, |k, i, j| {
+            ip.a2[k][j ^ i] -= mm_r3[i][j] * dr2[k][i][j];
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            jp.a2[k][j] += mm_r3[i][j] * dr2[k][i][j];
+        });
+
+        loop3(3, TILE, TILE, |k, i, j| {
+            ip.a3[k][j ^ i] -= mm_r3[i][j] * dr3[k][i][j];
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            jp.a3[k][j] += mm_r3[i][j] * dr3[k][i][j];
         });
     }
 }

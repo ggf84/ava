@@ -24,8 +24,8 @@ impl Energy {
         let mut rinv1: [[Real; TILE]; TILE] = Default::default();
         let mut rinv2: [[Real; TILE]; TILE] = Default::default();
         let mut mm: [[Real; TILE]; TILE] = Default::default();
-        let mut mm_v2: [[Real; TILE]; TILE] = Default::default();
-        let mut mm_rinv1: [[Real; TILE]; TILE] = Default::default();
+        let mut mmv2: [[Real; TILE]; TILE] = Default::default();
+        let mut mm_r1: [[Real; TILE]; TILE] = Default::default();
 
         loop3(3, TILE, TILE, |k, i, j| {
             dr0[k][i][j] = ip.r0[k][j ^ i] - jp.r0[k][j];
@@ -59,24 +59,24 @@ impl Energy {
             mm[i][j] = ip.mass[j ^ i] * jp.mass[j];
         });
         loop2(TILE, TILE, |i, j| {
-            mm_v2[i][j] = mm[i][j] * s11[i][j];
+            mmv2[i][j] = mm[i][j] * s11[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            mm_rinv1[i][j] = mm[i][j] * rinv1[i][j];
-        });
-
-        loop2(TILE, TILE, |i, j| {
-            ip.ekin[j ^ i] += mm_v2[i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            jp.ekin[j] += mm_v2[i][j];
+            mm_r1[i][j] = mm[i][j] * rinv1[i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            ip.epot[j ^ i] -= mm_rinv1[i][j];
+            ip.ekin[j ^ i] += mmv2[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            jp.epot[j] -= mm_rinv1[i][j];
+            jp.ekin[j] += mmv2[i][j];
+        });
+
+        loop2(TILE, TILE, |i, j| {
+            ip.epot[j ^ i] -= mm_r1[i][j];
+        });
+        loop2(TILE, TILE, |i, j| {
+            jp.epot[j] -= mm_r1[i][j];
         });
     }
 }
