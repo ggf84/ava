@@ -5,10 +5,10 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 #[repr(align(16))]
 #[derive(Debug, Default)]
 pub struct AccData {
-    eps: [Real; TILE],
-    mass: [Real; TILE],
-    r0: [[Real; TILE]; 3],
-    a0: [[Real; TILE]; 3],
+    pub eps: [Real; TILE],
+    pub mass: [Real; TILE],
+    pub r0: [[Real; TILE]; 3],
+    pub a0: [[Real; TILE]; 3],
 }
 
 pub struct Acc {}

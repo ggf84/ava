@@ -5,12 +5,12 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 #[repr(align(16))]
 #[derive(Debug, Default)]
 pub struct EnergyData {
-    eps: [Real; TILE],
-    mass: [Real; TILE],
-    r0: [[Real; TILE]; 3],
-    r1: [[Real; TILE]; 3],
-    ekin: [Real; TILE],
-    epot: [Real; TILE],
+    pub eps: [Real; TILE],
+    pub mass: [Real; TILE],
+    pub r0: [[Real; TILE]; 3],
+    pub r1: [[Real; TILE]; 3],
+    pub ekin: [Real; TILE],
+    pub epot: [Real; TILE],
 }
 
 pub struct Energy {}
