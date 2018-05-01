@@ -4,7 +4,7 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
 #[derive(Debug, Default)]
-struct SnpData {
+pub struct SnpData {
     eps: [Real; TILE],
     mass: [Real; TILE],
     r0: [[Real; TILE]; 3],
@@ -15,10 +15,10 @@ struct SnpData {
     a2: [[Real; TILE]; 3],
 }
 
-struct Snp {}
+pub struct Snp {}
 impl Snp {
     // flop count: 101
-    fn p2p(&self, ip: &mut SnpData, jp: &mut SnpData) {
+    pub fn p2p(&self, ip: &mut SnpData, jp: &mut SnpData) {
         const CQ21: Real = 5.0 / 3.0;
         let mut dr0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut dr1: [[[Real; TILE]; TILE]; 3] = Default::default();
@@ -143,7 +143,7 @@ impl Kernel for Snp {
     type SrcType = [Particle];
     type DstType = [([Real; 3], [Real; 3], [Real; 3])];
 
-    const NTILES: usize = 32;
+    const NTILES: usize = 64 / TILE;
 
     fn kernel(
         &self,

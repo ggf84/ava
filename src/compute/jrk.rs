@@ -4,7 +4,7 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
 #[derive(Debug, Default)]
-struct JrkData {
+pub struct JrkData {
     eps: [Real; TILE],
     mass: [Real; TILE],
     r0: [[Real; TILE]; 3],
@@ -13,10 +13,10 @@ struct JrkData {
     a1: [[Real; TILE]; 3],
 }
 
-struct Jrk {}
+pub struct Jrk {}
 impl Jrk {
     // flop count: 56
-    fn p2p(&self, ip: &mut JrkData, jp: &mut JrkData) {
+    pub fn p2p(&self, ip: &mut JrkData, jp: &mut JrkData) {
         let mut dr0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut dr1: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut s00: [[Real; TILE]; TILE] = Default::default();
@@ -92,7 +92,7 @@ impl Kernel for Jrk {
     type SrcType = [Particle];
     type DstType = [([Real; 3], [Real; 3])];
 
-    const NTILES: usize = 32;
+    const NTILES: usize = 64 / TILE;
 
     fn kernel(
         &self,

@@ -4,7 +4,7 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
 #[derive(Debug, Default)]
-struct CrkData {
+pub struct CrkData {
     eps: [Real; TILE],
     mass: [Real; TILE],
     r0: [[Real; TILE]; 3],
@@ -17,10 +17,10 @@ struct CrkData {
     a3: [[Real; TILE]; 3],
 }
 
-struct Crk {}
+pub struct Crk {}
 impl Crk {
     // flop count: 157
-    fn p2p(&self, ip: &mut CrkData, jp: &mut CrkData) {
+    pub fn p2p(&self, ip: &mut CrkData, jp: &mut CrkData) {
         const CQ21: Real = 5.0 / 3.0;
         const CQ31: Real = 8.0 / 3.0;
         const CQ32: Real = 7.0 / 3.0;
@@ -203,7 +203,7 @@ impl Kernel for Crk {
     type SrcType = [Particle];
     type DstType = [([Real; 3], [Real; 3], [Real; 3], [Real; 3])];
 
-    const NTILES: usize = 32;
+    const NTILES: usize = 64 / TILE;
 
     fn kernel(
         &self,

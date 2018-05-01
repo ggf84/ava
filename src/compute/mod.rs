@@ -70,12 +70,12 @@ where
             let (src_lo, src_hi) = src.split_at(mid);
             let (dst_lo, dst_hi) = dst.split_at_mut(mid);
 
-            self.rectangle(src_lo, src_hi, dst_lo, dst_hi);
-
             rayon::join(
                 || self.triangle(src_lo, dst_lo),
                 || self.triangle(src_hi, dst_hi),
             );
+
+            self.rectangle(src_lo, src_hi, dst_lo, dst_hi);
         }
     }
 
@@ -100,12 +100,12 @@ where
             let (jdst_lo, jdst_hi) = jdst.split_at_mut(jmid);
 
             rayon::join(
-                || self.rectangle(isrc_lo, jsrc_lo, idst_lo, jdst_lo),
-                || self.rectangle(isrc_hi, jsrc_hi, idst_hi, jdst_hi),
-            );
-            rayon::join(
                 || self.rectangle(isrc_lo, jsrc_hi, idst_lo, jdst_hi),
                 || self.rectangle(isrc_hi, jsrc_lo, idst_hi, jdst_lo),
+            );
+            rayon::join(
+                || self.rectangle(isrc_lo, jsrc_lo, idst_lo, jdst_lo),
+                || self.rectangle(isrc_hi, jsrc_hi, idst_hi, jdst_hi),
             );
         } else if ilen > 0 && jlen > 0 {
             self.kernel(isrc, jsrc, idst, jdst);

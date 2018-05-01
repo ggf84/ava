@@ -4,7 +4,7 @@ use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
 #[derive(Debug, Default)]
-struct EnergyData {
+pub struct EnergyData {
     eps: [Real; TILE],
     mass: [Real; TILE],
     r0: [[Real; TILE]; 3],
@@ -13,10 +13,10 @@ struct EnergyData {
     epot: [Real; TILE],
 }
 
-struct Energy {}
+pub struct Energy {}
 impl Energy {
     // flop count: 28
-    fn p2p(&self, ip: &mut EnergyData, jp: &mut EnergyData) {
+    pub fn p2p(&self, ip: &mut EnergyData, jp: &mut EnergyData) {
         let mut dr0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut dr1: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut s00: [[Real; TILE]; TILE] = Default::default();
@@ -85,7 +85,7 @@ impl Kernel for Energy {
     type SrcType = [Particle];
     type DstType = [(Real, Real)];
 
-    const NTILES: usize = 32;
+    const NTILES: usize = 64 / TILE;
 
     fn kernel(
         &self,
