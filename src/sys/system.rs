@@ -2,7 +2,7 @@ use real::Real;
 use compute;
 use sys::particles::Particle;
 
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParticleSystem {
     pub particles: Vec<Particle>,
 }
@@ -13,6 +13,14 @@ impl ParticleSystem {
     }
     pub fn len(&self) -> usize {
         self.particles.len()
+    }
+    pub fn sort_by_dt(&mut self, n: usize) {
+        self.particles[..n].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+    }
+    pub fn set_shared_dt(&mut self, dt: Real) {
+        for p in self.particles.iter_mut() {
+            p.dt = dt;
+        }
     }
 }
 

@@ -1,41 +1,188 @@
+mod hermite;
+
+use bincode;
+use std::fs::File;
+use std::io::BufWriter;
+use std::time::{Duration, Instant};
+
 use real::Real;
 use sys::system::ParticleSystem;
-use std::time::{Duration, Instant};
-use std::fmt::Debug;
+pub use self::hermite::{Hermite4, Hermite6, Hermite8};
 
-pub mod hermite;
-
-pub trait Integrator {
-    fn init(&self, tnow: Real, psys: &mut ParticleSystem);
-    fn evolve(&self, psys: &mut ParticleSystem, counter: &mut Counter) -> Real;
+fn to_power_of_two(dt: Real) -> Real {
+    let pow = dt.log2().floor();
+    let dtq = (2.0 as Real).powi(pow as i32);
+    dtq
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum TimeStepScheme {
-    Constant { dt: Real },
-    Adaptive { shared: bool },
+trait Evolver {
+    fn init(&self, dtmax: Real, psys: &mut ParticleSystem);
+    fn evolve(
+        &self,
+        tend: Real,
+        psys: &mut ParticleSystem,
+        tstep_scheme: TimeStepScheme,
+        counter: &mut Counter,
+    ) -> Real;
 }
 
-#[derive(Debug, Default)]
+#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Counter {
-    bsteps: usize,
-    isteps: usize,
+    steps: u16,
+    bsteps: u32,
+    isteps: u64,
 }
 impl Counter {
     fn reset(&mut self) {
+        self.steps = 0;
         self.bsteps = 0;
         self.isteps = 0;
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Logger {
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum TimeStepScheme {
+    Constant { dt: Real },
+    Adaptive { shared: bool },
+}
+impl TimeStepScheme {
+    pub fn constant(dt: Real) -> TimeStepScheme {
+        TimeStepScheme::Constant {
+            dt: to_power_of_two(dt),
+        }
+    }
+    pub fn adaptive_shared() -> TimeStepScheme {
+        TimeStepScheme::Adaptive { shared: true }
+    }
+    pub fn adaptive_block() -> TimeStepScheme {
+        TimeStepScheme::Adaptive { shared: false }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum IntegratorKind {
+    H4(Hermite4),
+    H6(Hermite6),
+    H8(Hermite8),
+}
+impl From<Hermite4> for IntegratorKind {
+    fn from(integrator: Hermite4) -> Self {
+        IntegratorKind::H4(integrator)
+    }
+}
+impl From<Hermite6> for IntegratorKind {
+    fn from(integrator: Hermite6) -> Self {
+        IntegratorKind::H6(integrator)
+    }
+}
+impl From<Hermite8> for IntegratorKind {
+    fn from(integrator: Hermite8) -> Self {
+        IntegratorKind::H8(integrator)
+    }
+}
+impl Evolver for IntegratorKind {
+    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
+        match *self {
+            IntegratorKind::H4(ref integrator) => integrator.init(dtmax, psys),
+            IntegratorKind::H6(ref integrator) => integrator.init(dtmax, psys),
+            IntegratorKind::H8(ref integrator) => integrator.init(dtmax, psys),
+        }
+    }
+    fn evolve(
+        &self,
+        tend: Real,
+        psys: &mut ParticleSystem,
+        tstep_scheme: TimeStepScheme,
+        counter: &mut Counter,
+    ) -> Real {
+        match *self {
+            IntegratorKind::H4(ref integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme, counter)
+            }
+            IntegratorKind::H6(ref integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme, counter)
+            }
+            IntegratorKind::H8(ref integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme, counter)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Simulation {
+    tnow: Real,
+    dtres: Real,
+    dtlog: Real,
+    dtmax: Real,
+    logger: Logger,
+    tstep_scheme: TimeStepScheme,
+    integrator: IntegratorKind,
+    psys: ParticleSystem,
+}
+impl Simulation {
+    pub fn new<I: Into<IntegratorKind>>(
+        integrator: I,
+        tstep_scheme: TimeStepScheme,
+        psys: ParticleSystem,
+    ) -> Simulation {
+        Simulation {
+            tnow: 0.0,
+            dtres: 0.0,
+            dtlog: 0.0,
+            dtmax: 0.0,
+            logger: Default::default(),
+            integrator: integrator.into(),
+            tstep_scheme: tstep_scheme,
+            psys: psys,
+        }
+    }
+    fn write_restart_file(&self) {
+        let mut writer = BufWriter::new(File::create("res.sim").unwrap());
+        bincode::serialize_into(&mut writer, &self).unwrap();
+    }
+}
+impl Simulation {
+    pub fn init(&mut self, dtres_pow: i32, dtlog_pow: i32, dtmax_pow: i32) {
+        let mut instant = Instant::now();
+        assert!(dtres_pow >= dtlog_pow);
+        assert!(dtlog_pow >= dtmax_pow);
+        self.dtres = (2.0 as Real).powi(dtres_pow);
+        self.dtlog = (2.0 as Real).powi(dtlog_pow);
+        self.dtmax = (2.0 as Real).powi(dtmax_pow);
+        self.integrator.init(self.dtmax, &mut self.psys);
+        self.logger.init(&self.psys);
+        self.logger.log(self.tnow, &self.psys, &mut instant);
+    }
+    pub fn evolve(&mut self, tend: Real) {
+        let mut instant = Instant::now();
+        while self.tnow < tend {
+            let tend = self.tnow + self.dtmax;
+            self.tnow = self.integrator.evolve(
+                tend,
+                &mut self.psys,
+                self.tstep_scheme,
+                &mut self.logger.counter,
+            );
+
+            if self.tnow % self.dtlog == 0.0 {
+                self.logger.log(self.tnow, &self.psys, &mut instant);
+            }
+            if self.tnow % self.dtres == 0.0 {
+                self.write_restart_file();
+            }
+        }
+    }
+}
+
+#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
+struct Logger {
     te_0: Real,
     te_n: Real,
     counter: Counter,
-    counter_tot: Counter,
+    counter_cum: Counter,
     duration: Duration,
-    duration_tot: Duration,
+    duration_cum: Duration,
 }
 impl Logger {
     fn init(&mut self, psys: &ParticleSystem) {
@@ -44,8 +191,9 @@ impl Logger {
         self.te_0 = te;
         self.te_n = te;
         let h0 = format!(
-            "# {:<12} {:<+11} {:<+11} {:<+11} {:<+11} {:<+11} \
-             {:<+11} {:<+11} {:<+10} {:<+12} {:>6} {:>8} {:>10} {:>12}",
+            "{:>11} {:>+10} {:>+10} {:>+10} \
+             {:>+10} {:>+10} {:>+10} {:>+10} \
+             {:>6} {:>8} {:>10} {:>12} {:>9} {:>12}",
             "(1)",
             "(2)",
             "(3)",
@@ -62,121 +210,72 @@ impl Logger {
             "(14)",
         );
         let h1 = format!(
-            "# {:<12} {:<+11} {:<+11} {:<+11} {:<+11} {:<+11} \
-             {:<+11} {:<+11} {:<+10} {:<+12} {:>6} {:>8} {:>10} {:>12}",
+            "{:>11} {:>+10} {:>+10} {:>+10} \
+             {:>+10} {:>+10} {:>+10} {:>+10} \
+             {:>6} {:>8} {:>10} {:>12} {:>9} {:>12}",
             "tnow",
             "ke",
             "pe",
             "ve",
-            "err_0",
-            "err_n",
+            "err_rel",
+            "err_cum",
             "rcom",
             "vcom",
-            "duration",
-            "duration_tot",
             "bsteps",
             "isteps",
-            "bsteps_tot",
-            "isteps_tot",
+            "bsteps_cum",
+            "isteps_cum",
+            "duration",
+            "duration_cum",
         );
-        println!("{}\n{}\n# {}", h0, h1, "-".repeat(h1.len() - 2));
+        println!("# {}\n# {}\n# {}", h0, h1, "-".repeat(h1.len()));
     }
-    fn log(&mut self, tnow: Real, psys: &ParticleSystem) {
+    fn log(&mut self, tnow: Real, psys: &ParticleSystem, instant: &mut Instant) {
         let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
         let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
         let (ke, pe) = psys.energies();
         let te = ke + pe;
         let ve = 2.0 * ke + pe;
-        let err_0 = (te - self.te_0) / self.te_0;
-        let err_n = (te - self.te_n) / self.te_n;
+        let err_rel = (te - self.te_n) / self.te_n;
+        let err_cum = (te - self.te_0) / self.te_0;
         self.te_n = te;
 
-        self.counter_tot.bsteps += self.counter.bsteps;
-        self.counter_tot.isteps += self.counter.isteps;
-        self.duration_tot += self.duration;
+        let now = Instant::now();
+        self.duration = now.duration_since(*instant);
+
+        self.counter_cum.steps += self.counter.steps;
+        self.counter_cum.bsteps += self.counter.bsteps;
+        self.counter_cum.isteps += self.counter.isteps;
+        self.duration_cum += self.duration;
 
         let duration =
             self.duration.subsec_nanos() as f64 * 1.0e-9 + self.duration.as_secs() as f64;
-        let duration_tot =
-            self.duration_tot.subsec_nanos() as f64 * 1.0e-9 + self.duration_tot.as_secs() as f64;
+        let duration_cum =
+            self.duration_cum.subsec_nanos() as f64 * 1.0e-9 + self.duration_cum.as_secs() as f64;
 
-        println!(
-            "  {:<12.6e} {:<+11.4e} {:<+11.4e} {:<+11.4e} {:<+11.4e} {:<+11.4e} \
-             {:<+11.4e} {:<+11.4e} {:<+10.4e} {:<+12.6e} {:>6} {:>8} {:>10} {:>12}",
+        let line = format!(
+            "{:>11.4} {:>+10.3e} {:>+10.3e} {:>+10.3e} \
+             {:>+10.3e} {:>+10.3e} {:>+10.3e} {:>+10.3e} \
+             {:>6} {:>8} {:>10} {:>12} {:>9.4} {:>12.4}",
             tnow,
             ke,
             pe,
             ve,
-            err_0,
-            err_n,
+            err_rel,
+            err_cum,
             rcom,
             vcom,
-            duration,
-            duration_tot,
             self.counter.bsteps,
             self.counter.isteps,
-            self.counter_tot.bsteps,
-            self.counter_tot.isteps,
+            self.counter_cum.bsteps,
+            self.counter_cum.isteps,
+            duration,
+            duration_cum,
         );
+        println!("  {}", line);
+        self.counter.reset();
+        *instant = now;
     }
-}
-
-#[derive(Debug)]
-pub struct Simulation<I: Integrator + Debug> {
-    tnow: Real,
-    dtlog: Real,
-    logger: Logger,
-    instant: Instant,
-    integrator: I,
-}
-impl<I: Integrator + Debug> Simulation<I> {
-    pub fn new(integrator: I, dtlog: Real) -> Simulation<I> {
-        Simulation {
-            tnow: 0.0,
-            dtlog: to_power_of_two(dtlog),
-            logger: Default::default(),
-            instant: Instant::now(),
-            integrator: integrator,
-        }
-    }
-    pub fn init(&mut self, tnow: Real, psys: &mut ParticleSystem) {
-        self.tnow = tnow;
-        self.logger.init(psys);
-        self.integrator.init(tnow, psys);
-
-        if self.tnow % self.dtlog == 0.0 {
-            let instant = Instant::now();
-            self.logger.duration = instant.duration_since(self.instant);
-            self.logger.log(self.tnow, &psys);
-            if self.tnow == tnow {
-                eprintln!("{:#?}", self);
-            }
-            self.logger.counter.reset();
-            self.instant = instant;
-        }
-    }
-    pub fn run(&mut self, tend: Real, psys: &mut ParticleSystem) {
-        while self.tnow < tend {
-            self.tnow += self.integrator.evolve(psys, &mut self.logger.counter);
-
-            if self.tnow % self.dtlog == 0.0 {
-                let instant = Instant::now();
-                self.logger.duration = instant.duration_since(self.instant);
-                self.logger.log(self.tnow, &psys);
-                if self.tnow == tend {
-                    eprintln!("{:#?}", self);
-                }
-                self.logger.counter.reset();
-                self.instant = instant;
-            }
-        }
-    }
-}
-
-fn to_power_of_two(dt: Real) -> Real {
-    let pow = dt.log2().floor();
-    let dtq = (2.0 as Real).powi(pow as i32);
-    dtq
 }
 
 // -- end of file --

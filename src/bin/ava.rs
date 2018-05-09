@@ -1,8 +1,11 @@
 extern crate ava;
+extern crate bincode;
 extern crate rand;
 
-use std::time::Instant;
 use rand::{SeedableRng, StdRng};
+use std::time::Instant;
+use std::io::BufReader;
+use std::fs::File;
 
 use ava::ics::Model;
 use ava::ics::sdp::Plummer;
@@ -214,31 +217,34 @@ fn main() {
 
     let eta = 0.5;
 
-    let dtmax = 0.0625;
-    let dtlog = 0.125;
+    let dtres_pow = -0;
+    let dtlog_pow = -2;
+    let dtmax_pow = -4;
 
-    let tnow = 0.0;
     let tend = 10.0;
 
-    // use ava::sim::{TimeStepScheme::*, hermite::Hermite4};
-    // let integrator = Hermite4::new(1, eta, dtmax, Constant { dt: eta * dtmax });
-    // let integrator = Hermite4::new(1, eta, dtmax, Adaptive { shared: true });
-    // let integrator = Hermite4::new(1, eta, dtmax, Adaptive { shared: false });
+    use ava::sim::*;
 
-    // use ava::sim::{TimeStepScheme::*, hermite::Hermite6};
-    // let integrator = Hermite6::new(1, eta, dtmax, Constant { dt: eta * dtmax });
-    // let integrator = Hermite6::new(1, eta, dtmax, Adaptive { shared: true });
-    // let integrator = Hermite6::new(1, eta, dtmax, Adaptive { shared: false });
+    // use ava::real::Real;
+    // let dt = eta * (2.0 as Real).powi(dtmax_pow);
+    // let tstep_scheme = TimeStepScheme::constant(dt);
+    // let tstep_scheme = TimeStepScheme::adaptive_shared();
+    let tstep_scheme = TimeStepScheme::adaptive_block();
 
-    use ava::sim::{TimeStepScheme::*, hermite::Hermite8};
-    // let integrator = Hermite8::new(1, eta, dtmax, Constant { dt: eta * dtmax });
-    // let integrator = Hermite8::new(1, eta, dtmax, Adaptive { shared: true });
-    let integrator = Hermite8::new(1, eta, dtmax, Adaptive { shared: false });
+    // let integrator = Hermite4::new(eta, 1);
+    // let integrator = Hermite6::new(eta, 1);
+    let integrator = Hermite8::new(eta, 1);
 
-    use ava::sim::Simulation;
-    let mut sim = Simulation::new(integrator, dtlog);
-    sim.init(tnow, &mut psys);
-    sim.run(tend, &mut psys);
+    let mut sim = Simulation::new(integrator, tstep_scheme, psys);
+    sim.init(dtres_pow, dtlog_pow, dtmax_pow);
+    sim.evolve(tend);
+
+    let mut reader = BufReader::new(File::open("res.sim").unwrap());
+    let mut de_sim: Simulation = bincode::deserialize_from(&mut reader).unwrap();
+    assert!(de_sim == sim);
+
+    de_sim.evolve(tend);
+    assert!(de_sim == sim);
 }
 
 // -- end of file --

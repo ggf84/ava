@@ -1,5 +1,10 @@
+extern crate bincode;
 extern crate rand;
 extern crate rayon;
+extern crate serde;
+
+#[macro_use]
+extern crate serde_derive;
 
 pub mod compute;
 pub mod ics;

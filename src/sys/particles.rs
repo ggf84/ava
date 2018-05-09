@@ -1,6 +1,6 @@
 use real::Real;
 
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Particle {
     /// Id of the particle
     pub id: usize,
