@@ -217,9 +217,9 @@ fn main() {
 
     let eta = 0.5;
 
-    let dtres_pow = -0;
+    let dtres_pow = -1;
     let dtlog_pow = -2;
-    let dtmax_pow = -4;
+    let dtmax_pow = -3;
 
     let tend = 10.0;
 
