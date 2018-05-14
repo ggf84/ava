@@ -3,7 +3,7 @@ use sys::particles::Particle;
 use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct EnergyData {
     pub eps: [Real; TILE],
     pub mass: [Real; TILE],
@@ -99,7 +99,7 @@ impl Kernel for Energy {
         let ni_tiles = (ni + TILE - 1) / TILE;
         let nj_tiles = (nj + TILE - 1) / TILE;
 
-        let mut idata: [EnergyData; Self::NTILES] = Default::default();
+        let mut idata: [EnergyData; Self::NTILES] = [Default::default(); Self::NTILES];
         for ii in 0..ni_tiles {
             for i in 0..TILE {
                 if (TILE * ii + i) < ni {
@@ -111,7 +111,7 @@ impl Kernel for Energy {
                 }
             }
         }
-        let mut jdata: [EnergyData; Self::NTILES] = Default::default();
+        let mut jdata: [EnergyData; Self::NTILES] = [Default::default(); Self::NTILES];
         for jj in 0..nj_tiles {
             for j in 0..TILE {
                 if (TILE * jj + j) < nj {

@@ -12,13 +12,13 @@ use ava::sys::particles::Particle;
 use ava::sys::system::ParticleSystem;
 
 const TILE: usize = 16 / size_of::<Real>();
-const NTILES: usize = 64 / TILE;
+const NTILES: usize = 256 / TILE;
 const N: usize = NTILES * TILE;
 
-fn init_particle_system(seed: usize) -> ParticleSystem {
+fn init_particle_system(seed: usize, n: usize) -> ParticleSystem {
     let mut psys = ParticleSystem::new();
     let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
-    for id in 0..N {
+    for id in 0..n {
         let particle = Particle {
             id: id,
             eps: rng.gen(),
@@ -41,7 +41,7 @@ mod energy {
     use ava::compute::energy::{self, Energy, EnergyData};
 
     fn init_energy_data(seed: usize) -> [EnergyData; NTILES] {
-        let mut data: [EnergyData; NTILES] = Default::default();
+        let mut data: [EnergyData; NTILES] = [Default::default(); NTILES];
         let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
@@ -64,19 +64,19 @@ mod energy {
                 }
             }
         });
-        println!("{:?}", (idata, jdata));
+        println!("{:?}", (&idata[..], &jdata[..]));
     }
 
     #[bench]
     fn triangle(b: &mut Bencher) {
-        let psys = init_particle_system(0);
+        let psys = init_particle_system(0, N);
         b.iter(|| energy::triangle(&psys.particles[..]));
     }
 
     #[bench]
     fn rectangle(b: &mut Bencher) {
-        let psys1 = init_particle_system(1);
-        let psys2 = init_particle_system(2);
+        let psys1 = init_particle_system(1, N);
+        let psys2 = init_particle_system(2, N);
         b.iter(|| energy::rectangle(&psys1.particles[..], &psys2.particles[..]));
     }
 }
@@ -88,7 +88,7 @@ mod acc {
     use ava::compute::acc::{self, Acc, AccData};
 
     fn init_acc_data(seed: usize) -> [AccData; NTILES] {
-        let mut data: [AccData; NTILES] = Default::default();
+        let mut data: [AccData; NTILES] = [Default::default(); NTILES];
         let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
@@ -110,19 +110,19 @@ mod acc {
                 }
             }
         });
-        println!("{:?}", (idata, jdata));
+        println!("{:?}", (&idata[..], &jdata[..]));
     }
 
     #[bench]
     fn triangle(b: &mut Bencher) {
-        let psys = init_particle_system(0);
+        let psys = init_particle_system(0, N);
         b.iter(|| acc::triangle(&psys.particles[..]));
     }
 
     #[bench]
     fn rectangle(b: &mut Bencher) {
-        let psys1 = init_particle_system(1);
-        let psys2 = init_particle_system(2);
+        let psys1 = init_particle_system(1, N);
+        let psys2 = init_particle_system(2, N);
         b.iter(|| acc::rectangle(&psys1.particles[..], &psys2.particles[..]));
     }
 }
@@ -134,7 +134,7 @@ mod jrk {
     use ava::compute::jrk::{self, Jrk, JrkData};
 
     fn init_jrk_data(seed: usize) -> [JrkData; NTILES] {
-        let mut data: [JrkData; NTILES] = Default::default();
+        let mut data: [JrkData; NTILES] = [Default::default(); NTILES];
         let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
@@ -157,19 +157,19 @@ mod jrk {
                 }
             }
         });
-        println!("{:?}", (idata, jdata));
+        println!("{:?}", (&idata[..], &jdata[..]));
     }
 
     #[bench]
     fn triangle(b: &mut Bencher) {
-        let psys = init_particle_system(0);
+        let psys = init_particle_system(0, N);
         b.iter(|| jrk::triangle(&psys.particles[..]));
     }
 
     #[bench]
     fn rectangle(b: &mut Bencher) {
-        let psys1 = init_particle_system(1);
-        let psys2 = init_particle_system(2);
+        let psys1 = init_particle_system(1, N);
+        let psys2 = init_particle_system(2, N);
         b.iter(|| jrk::rectangle(&psys1.particles[..], &psys2.particles[..]));
     }
 }
@@ -181,7 +181,7 @@ mod snp {
     use ava::compute::snp::{self, Snp, SnpData};
 
     fn init_snp_data(seed: usize) -> [SnpData; NTILES] {
-        let mut data: [SnpData; NTILES] = Default::default();
+        let mut data: [SnpData; NTILES] = [Default::default(); NTILES];
         let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
@@ -205,19 +205,19 @@ mod snp {
                 }
             }
         });
-        println!("{:?}", (idata, jdata));
+        println!("{:?}", (&idata[..], &jdata[..]));
     }
 
     #[bench]
     fn triangle(b: &mut Bencher) {
-        let psys = init_particle_system(0);
+        let psys = init_particle_system(0, N);
         b.iter(|| snp::triangle(&psys.particles[..]));
     }
 
     #[bench]
     fn rectangle(b: &mut Bencher) {
-        let psys1 = init_particle_system(1);
-        let psys2 = init_particle_system(2);
+        let psys1 = init_particle_system(1, N);
+        let psys2 = init_particle_system(2, N);
         b.iter(|| snp::rectangle(&psys1.particles[..], &psys2.particles[..]));
     }
 }
@@ -229,7 +229,7 @@ mod crk {
     use ava::compute::crk::{self, Crk, CrkData};
 
     fn init_crk_data(seed: usize) -> [CrkData; NTILES] {
-        let mut data: [CrkData; NTILES] = Default::default();
+        let mut data: [CrkData; NTILES] = [Default::default(); NTILES];
         let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
@@ -254,19 +254,19 @@ mod crk {
                 }
             }
         });
-        println!("{:?}", (idata, jdata));
+        println!("{:?}", (&idata[..], &jdata[..]));
     }
 
     #[bench]
     fn triangle(b: &mut Bencher) {
-        let psys = init_particle_system(0);
+        let psys = init_particle_system(0, N);
         b.iter(|| crk::triangle(&psys.particles[..]));
     }
 
     #[bench]
     fn rectangle(b: &mut Bencher) {
-        let psys1 = init_particle_system(1);
-        let psys2 = init_particle_system(2);
+        let psys1 = init_particle_system(1, N);
+        let psys2 = init_particle_system(2, N);
         b.iter(|| crk::rectangle(&psys1.particles[..], &psys2.particles[..]));
     }
 }
