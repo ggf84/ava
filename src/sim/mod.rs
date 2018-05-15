@@ -6,9 +6,9 @@ use std::io::BufWriter;
 use std::ops::{Add, AddAssign};
 use std::time::{Duration, Instant};
 
+pub use self::hermite::{Hermite4, Hermite6, Hermite8};
 use real::Real;
 use sys::system::ParticleSystem;
-pub use self::hermite::{Hermite4, Hermite6, Hermite8};
 
 fn to_power_of_two(dt: Real) -> Real {
     let pow = dt.log2().floor();
@@ -108,15 +108,9 @@ impl Evolver for IntegratorKind {
         tstep_scheme: TimeStepScheme,
     ) -> (Real, Counter) {
         match self {
-            IntegratorKind::H4(integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme)
-            }
-            IntegratorKind::H6(integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme)
-            }
-            IntegratorKind::H8(integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme)
-            }
+            IntegratorKind::H4(integrator) => integrator.evolve(tend, psys, tstep_scheme),
+            IntegratorKind::H6(integrator) => integrator.evolve(tend, psys, tstep_scheme),
+            IntegratorKind::H8(integrator) => integrator.evolve(tend, psys, tstep_scheme),
         }
     }
 }
@@ -170,11 +164,8 @@ impl Simulation {
         let mut instant = Instant::now();
         while self.tnow < tend {
             let tend = self.tnow + self.dtmax;
-            let (tnow, counter) = self.integrator.evolve(
-                tend,
-                &mut self.psys,
-                self.tstep_scheme,
-            );
+            let (tnow, counter) = self.integrator
+                .evolve(tend, &mut self.psys, self.tstep_scheme);
             self.tnow = tnow;
             self.logger.counter += counter;
 

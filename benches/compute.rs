@@ -4,8 +4,8 @@ extern crate ava;
 extern crate rand;
 extern crate test;
 
-use std::mem::size_of;
 use rand::{Rng, SeedableRng, StdRng};
+use std::mem::size_of;
 
 use ava::real::Real;
 use ava::sys::particles::Particle;
@@ -37,8 +37,8 @@ fn init_particle_system(seed: usize, n: usize) -> ParticleSystem {
 #[cfg(test)]
 mod energy {
     use super::*;
-    use test::Bencher;
     use ava::compute::energy::{self, Energy, EnergyData};
+    use test::Bencher;
 
     fn init_energy_data(seed: usize) -> [EnergyData; NTILES] {
         let mut data: [EnergyData; NTILES] = [Default::default(); NTILES];
@@ -84,8 +84,8 @@ mod energy {
 #[cfg(test)]
 mod acc {
     use super::*;
-    use test::Bencher;
     use ava::compute::acc::{self, Acc, AccData};
+    use test::Bencher;
 
     fn init_acc_data(seed: usize) -> [AccData; NTILES] {
         let mut data: [AccData; NTILES] = [Default::default(); NTILES];
@@ -130,8 +130,8 @@ mod acc {
 #[cfg(test)]
 mod jrk {
     use super::*;
-    use test::Bencher;
     use ava::compute::jrk::{self, Jrk, JrkData};
+    use test::Bencher;
 
     fn init_jrk_data(seed: usize) -> [JrkData; NTILES] {
         let mut data: [JrkData; NTILES] = [Default::default(); NTILES];
@@ -177,8 +177,8 @@ mod jrk {
 #[cfg(test)]
 mod snp {
     use super::*;
-    use test::Bencher;
     use ava::compute::snp::{self, Snp, SnpData};
+    use test::Bencher;
 
     fn init_snp_data(seed: usize) -> [SnpData; NTILES] {
         let mut data: [SnpData; NTILES] = [Default::default(); NTILES];
@@ -225,8 +225,8 @@ mod snp {
 #[cfg(test)]
 mod crk {
     use super::*;
-    use test::Bencher;
     use ava::compute::crk::{self, Crk, CrkData};
+    use test::Bencher;
 
     fn init_crk_data(seed: usize) -> [CrkData; NTILES] {
         let mut data: [CrkData; NTILES] = [Default::default(); NTILES];

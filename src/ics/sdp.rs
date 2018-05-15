@@ -1,6 +1,6 @@
+use super::Sampler;
 use rand::Rng;
 use real::{consts, Real};
-use super::Sampler;
 
 /// Plummer's stellar-density-profile
 #[derive(Default)]

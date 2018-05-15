@@ -1,6 +1,6 @@
+use super::{Kernel, loop1, loop2, loop3, TILE};
 use real::Real;
 use sys::particles::Particle;
-use super::{Kernel, loop1, loop2, loop3, TILE};
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]

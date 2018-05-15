@@ -3,13 +3,13 @@ extern crate bincode;
 extern crate rand;
 
 use rand::{SeedableRng, StdRng};
-use std::time::Instant;
-use std::io::BufReader;
 use std::fs::File;
+use std::io::BufReader;
+use std::time::Instant;
 
 use ava::ics::Model;
-use ava::ics::sdp::Plummer;
 use ava::ics::imf::{EqualMass, Maschberger2013};
+use ava::ics::sdp::Plummer;
 
 fn main() {
     let mut rng: StdRng = SeedableRng::from_seed(&[1, 2, 3, 4][..]);

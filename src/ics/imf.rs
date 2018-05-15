@@ -1,6 +1,6 @@
+use super::Sampler;
 use rand::Rng;
 use real::Real;
-use super::Sampler;
 
 /// Equal mass initial-mass-function
 pub struct EqualMass {

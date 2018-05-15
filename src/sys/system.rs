@@ -1,5 +1,5 @@
-use real::Real;
 use compute;
+use real::Real;
 use sys::particles::Particle;
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
