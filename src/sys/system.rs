@@ -15,7 +15,7 @@ impl ParticleSystem {
         self.particles.len()
     }
     pub fn sort_by_dt(&mut self, n: usize) {
-        self.particles[..n].sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        self.particles[..n].sort_unstable_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
     pub fn set_shared_dt(&mut self, dt: Real) {
         for p in self.particles.iter_mut() {
