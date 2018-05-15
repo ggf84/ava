@@ -3,6 +3,7 @@ mod hermite;
 use bincode;
 use std::fs::File;
 use std::io::BufWriter;
+use std::ops::{Add, AddAssign};
 use std::time::{Duration, Instant};
 
 use real::Real;
@@ -22,21 +23,33 @@ trait Evolver {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
-    ) -> Real;
+    ) -> (Real, Counter);
 }
 
-#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Counter {
     steps: u16,
     bsteps: u32,
     isteps: u64,
 }
 impl Counter {
-    fn reset(&mut self) {
-        self.steps = 0;
-        self.bsteps = 0;
-        self.isteps = 0;
+    fn new() -> Self {
+        Default::default()
+    }
+}
+impl Add for Counter {
+    type Output = Counter;
+    fn add(self, other: Counter) -> Counter {
+        Counter {
+            steps: self.steps + other.steps,
+            bsteps: self.bsteps + other.bsteps,
+            isteps: self.isteps + other.isteps,
+        }
+    }
+}
+impl AddAssign for Counter {
+    fn add_assign(&mut self, other: Counter) {
+        *self = *self + other;
     }
 }
 
@@ -82,10 +95,10 @@ impl From<Hermite8> for IntegratorKind {
 }
 impl Evolver for IntegratorKind {
     fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
-        match *self {
-            IntegratorKind::H4(ref integrator) => integrator.init(dtmax, psys),
-            IntegratorKind::H6(ref integrator) => integrator.init(dtmax, psys),
-            IntegratorKind::H8(ref integrator) => integrator.init(dtmax, psys),
+        match self {
+            IntegratorKind::H4(integrator) => integrator.init(dtmax, psys),
+            IntegratorKind::H6(integrator) => integrator.init(dtmax, psys),
+            IntegratorKind::H8(integrator) => integrator.init(dtmax, psys),
         }
     }
     fn evolve(
@@ -93,17 +106,16 @@ impl Evolver for IntegratorKind {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
-    ) -> Real {
-        match *self {
-            IntegratorKind::H4(ref integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme, counter)
+    ) -> (Real, Counter) {
+        match self {
+            IntegratorKind::H4(integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme)
             }
-            IntegratorKind::H6(ref integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme, counter)
+            IntegratorKind::H6(integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme)
             }
-            IntegratorKind::H8(ref integrator) => {
-                integrator.evolve(tend, psys, tstep_scheme, counter)
+            IntegratorKind::H8(integrator) => {
+                integrator.evolve(tend, psys, tstep_scheme)
             }
         }
     }
@@ -158,12 +170,13 @@ impl Simulation {
         let mut instant = Instant::now();
         while self.tnow < tend {
             let tend = self.tnow + self.dtmax;
-            self.tnow = self.integrator.evolve(
+            let (tnow, counter) = self.integrator.evolve(
                 tend,
                 &mut self.psys,
                 self.tstep_scheme,
-                &mut self.logger.counter,
             );
+            self.tnow = tnow;
+            self.logger.counter += counter;
 
             if self.tnow % self.dtlog == 0.0 {
                 self.logger.log(self.tnow, &self.psys, &mut instant);
@@ -243,9 +256,7 @@ impl Logger {
         let now = Instant::now();
         self.duration = now.duration_since(*instant);
 
-        self.counter_cum.steps += self.counter.steps;
-        self.counter_cum.bsteps += self.counter.bsteps;
-        self.counter_cum.isteps += self.counter.isteps;
+        self.counter_cum += self.counter;
         self.duration_cum += self.duration;
 
         let duration =
@@ -273,7 +284,7 @@ impl Logger {
             duration_cum,
         );
         println!("  {}", line);
-        self.counter.reset();
+        self.counter = Counter::new();
         *instant = now;
     }
 }

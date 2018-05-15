@@ -51,10 +51,10 @@ trait Hermite: Evolver {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
         npec: u8,
-    ) -> Real {
+    ) -> (Real, Counter) {
         let mut tnow = psys.particles[0].tnow;
+        let mut counter = Counter::new();
         let dtmax = tend - tnow;
         while tnow < tend {
             match tstep_scheme {
@@ -90,7 +90,7 @@ trait Hermite: Evolver {
             tnow += dt;
         }
         counter.steps += 1;
-        tnow
+        (tnow, counter)
     }
 }
 
@@ -116,9 +116,8 @@ impl Evolver for Hermite4 {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
-    ) -> Real {
-        self.pec(tend, psys, tstep_scheme, counter, self.npec)
+    ) -> (Real, Counter) {
+        self.pec(tend, psys, tstep_scheme, self.npec)
     }
 }
 impl Hermite for Hermite4 {
@@ -255,9 +254,8 @@ impl Evolver for Hermite6 {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
-    ) -> Real {
-        self.pec(tend, psys, tstep_scheme, counter, self.npec)
+    ) -> (Real, Counter) {
+        self.pec(tend, psys, tstep_scheme, self.npec)
     }
 }
 impl Hermite for Hermite6 {
@@ -440,9 +438,8 @@ impl Evolver for Hermite8 {
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        counter: &mut Counter,
-    ) -> Real {
-        self.pec(tend, psys, tstep_scheme, counter, self.npec)
+    ) -> (Real, Counter) {
+        self.pec(tend, psys, tstep_scheme, self.npec)
     }
 }
 impl Hermite for Hermite8 {
