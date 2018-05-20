@@ -24,9 +24,24 @@ fn count_nact(tnew: Real, psys: &ParticleSystem) -> usize {
     nact
 }
 
-trait Hermite: Evolver {
+impl<T: Hermite> Evolver for T {
+    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
+        <Self as Hermite>::init(self, dtmax, psys)
+    }
+    fn evolve(
+        &self,
+        tend: Real,
+        psys: &mut ParticleSystem,
+        tstep_scheme: TimeStepScheme,
+    ) -> (Real, Counter) {
+        <Self as Hermite>::evolve(self, tend, psys, tstep_scheme)
+    }
+}
+
+pub(crate) trait Hermite {
     const ORDER: u8;
 
+    fn npec(&self) -> u8;
     fn init_dt(&self, dtmax: Real, psys: &mut [Particle]);
     fn evaluate(&self, nact: usize, psys: &mut [Particle]);
     fn predict(&self, tnew: Real, psys: &mut [Particle]);
@@ -46,12 +61,11 @@ trait Hermite: Evolver {
         psys.sort_by_dt(nact);
     }
 
-    fn pec(
+    fn evolve(
         &self,
         tend: Real,
         psys: &mut ParticleSystem,
         tstep_scheme: TimeStepScheme,
-        npec: u8,
     ) -> (Real, Counter) {
         let mut tnow = psys.particles[0].tnow;
         let mut counter = Counter::new();
@@ -74,7 +88,7 @@ trait Hermite: Evolver {
             let nact = count_nact(tnew, psys);
             let mut psys_new = psys.clone();
             self.predict(tnew, &mut psys_new.particles[..]);
-            for _ in 0..npec {
+            for _ in 0..self.npec() {
                 self.evaluate(nact, &mut psys_new.particles[..]);
                 self.correct(&psys.particles[..nact], &mut psys_new.particles[..nact]);
             }
@@ -107,22 +121,12 @@ impl Hermite4 {
         }
     }
 }
-impl Evolver for Hermite4 {
-    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
-        <Self as Hermite>::init(self, dtmax, psys);
-    }
-    fn evolve(
-        &self,
-        tend: Real,
-        psys: &mut ParticleSystem,
-        tstep_scheme: TimeStepScheme,
-    ) -> (Real, Counter) {
-        self.pec(tend, psys, tstep_scheme, self.npec)
-    }
-}
 impl Hermite for Hermite4 {
     const ORDER: u8 = 4;
 
+    fn npec(&self) -> u8 {
+        self.npec
+    }
     fn init_dt(&self, dtmax: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
             let vv = 0.0; // p.vel.iter().fold(0.0, |s, v| s + v * v);
@@ -245,22 +249,12 @@ impl Hermite6 {
         }
     }
 }
-impl Evolver for Hermite6 {
-    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
-        <Self as Hermite>::init(self, dtmax, psys);
-    }
-    fn evolve(
-        &self,
-        tend: Real,
-        psys: &mut ParticleSystem,
-        tstep_scheme: TimeStepScheme,
-    ) -> (Real, Counter) {
-        self.pec(tend, psys, tstep_scheme, self.npec)
-    }
-}
 impl Hermite for Hermite6 {
     const ORDER: u8 = 6;
 
+    fn npec(&self) -> u8 {
+        self.npec
+    }
     fn init_dt(&self, dtmax: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
@@ -429,22 +423,12 @@ impl Hermite8 {
         }
     }
 }
-impl Evolver for Hermite8 {
-    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
-        <Self as Hermite>::init(self, dtmax, psys);
-    }
-    fn evolve(
-        &self,
-        tend: Real,
-        psys: &mut ParticleSystem,
-        tstep_scheme: TimeStepScheme,
-    ) -> (Real, Counter) {
-        self.pec(tend, psys, tstep_scheme, self.npec)
-    }
-}
 impl Hermite for Hermite8 {
     const ORDER: u8 = 8;
 
+    fn npec(&self) -> u8 {
+        self.npec
+    }
     fn init_dt(&self, dtmax: Real, psys: &mut [Particle]) {
         for p in psys.iter_mut() {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);

@@ -43,10 +43,7 @@ impl<T> SplitAtMut for [T] {
 }
 
 /// Kernel trait for triangle/rectangle parallel computations.
-trait Kernel
-where
-    Self: Sync,
-{
+trait Kernel: Sync {
     type SrcType: ?Sized + Sync + SplitAt<Output = Self::SrcType>;
     type DstType: ?Sized + Send + SplitAtMut<Output = Self::DstType>;
 
@@ -113,37 +110,30 @@ where
     }
 }
 
-fn loop1<F>(n: usize, mut f: F)
+#[inline]
+fn loop1<F>(nk: usize, mut f: F)
 where
     F: FnMut(usize),
 {
-    for k in 0..n {
+    for k in 0..nk {
         f(k);
     }
 }
 
+#[inline]
 fn loop2<F>(ni: usize, nj: usize, mut f: F)
 where
     F: FnMut(usize, usize),
 {
-    for i in 0..ni {
-        for j in 0..nj {
-            f(i, j);
-        }
-    }
+    loop1(ni, |i| loop1(nj, |j| f(i, j)));
 }
 
+#[inline]
 fn loop3<F>(ni: usize, nj: usize, nk: usize, mut f: F)
 where
     F: FnMut(usize, usize, usize),
 {
-    for i in 0..ni {
-        for j in 0..nj {
-            for k in 0..nk {
-                f(i, j, k);
-            }
-        }
-    }
+    loop1(ni, |i| loop1(nj, |j| loop1(nk, |k| f(i, j, k))));
 }
 
 // -- end of file --

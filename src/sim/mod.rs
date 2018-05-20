@@ -16,7 +16,7 @@ fn to_power_of_two(dt: Real) -> Real {
     dtq
 }
 
-trait Evolver {
+pub(crate) trait Evolver {
     fn init(&self, dtmax: Real, psys: &mut ParticleSystem);
     fn evolve(
         &self,
@@ -27,7 +27,7 @@ trait Evolver {
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Counter {
+pub(crate) struct Counter {
     steps: u16,
     bsteps: u32,
     isteps: u64,
