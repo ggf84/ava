@@ -1,4 +1,7 @@
-use super::{to_power_of_two, Counter, Evolver, TimeStepScheme::{self, *}};
+use super::{
+    to_power_of_two, Counter, Evolver,
+    TimeStepScheme::{self, *},
+};
 use compute;
 use real::Real;
 use sys::particles::Particle;

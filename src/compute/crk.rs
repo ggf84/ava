@@ -1,4 +1,4 @@
-use super::{Kernel, loop1, loop2, loop3, TILE};
+use super::{loop1, loop2, loop3, Kernel, TILE};
 use real::Real;
 use sys::particles::Particle;
 

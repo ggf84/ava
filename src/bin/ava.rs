@@ -7,9 +7,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::time::Instant;
 
-use ava::ics::Model;
 use ava::ics::imf::{EqualMass, Maschberger2013};
 use ava::ics::sdp::Plummer;
+use ava::ics::Model;
 
 fn main() {
     let seed = [0; 32];

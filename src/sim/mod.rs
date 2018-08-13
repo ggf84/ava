@@ -164,7 +164,8 @@ impl Simulation {
         let mut instant = Instant::now();
         while self.tnow < tend {
             let tend = self.tnow + self.dtmax;
-            let (tnow, counter) = self.integrator
+            let (tnow, counter) = self
+                .integrator
                 .evolve(tend, &mut self.psys, self.tstep_scheme);
             self.tnow = tnow;
             self.logger.counter += counter;
