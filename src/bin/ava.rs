@@ -12,7 +12,8 @@ use ava::ics::imf::{EqualMass, Maschberger2013};
 use ava::ics::sdp::Plummer;
 
 fn main() {
-    let mut rng: StdRng = SeedableRng::from_seed(&[1, 2, 3, 4][..]);
+    let seed = [0; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
 
     let _imf = EqualMass::new(1.0);
     let imf = Maschberger2013::new(0.01, 150.0);
@@ -204,7 +205,8 @@ fn main() {
 
     // --------------------
 
-    let mut rng: StdRng = SeedableRng::from_seed(&[1, 2, 3, 4][..]);
+    let seed = [0; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
 
     let imf = EqualMass::new(1.0);
     let _imf = Maschberger2013::new(0.01, 150.0);

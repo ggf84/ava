@@ -15,9 +15,9 @@ const TILE: usize = 16 / size_of::<Real>();
 const NTILES: usize = 256 / TILE;
 const N: usize = NTILES * TILE;
 
-fn init_particle_system(seed: usize, n: usize) -> ParticleSystem {
+fn init_particle_system(seed: u8, n: usize) -> ParticleSystem {
     let mut psys = ParticleSystem::new();
-    let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+    let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
     for id in 0..n {
         let particle = Particle {
             id: id,
@@ -40,9 +40,9 @@ mod energy {
     use ava::compute::energy::{self, Energy, EnergyData};
     use test::Bencher;
 
-    fn init_energy_data(seed: usize) -> [EnergyData; NTILES] {
+    fn init_energy_data(seed: u8) -> [EnergyData; NTILES] {
         let mut data: [EnergyData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -87,9 +87,9 @@ mod acc {
     use ava::compute::acc::{self, Acc, AccData};
     use test::Bencher;
 
-    fn init_acc_data(seed: usize) -> [AccData; NTILES] {
+    fn init_acc_data(seed: u8) -> [AccData; NTILES] {
         let mut data: [AccData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -133,9 +133,9 @@ mod jrk {
     use ava::compute::jrk::{self, Jrk, JrkData};
     use test::Bencher;
 
-    fn init_jrk_data(seed: usize) -> [JrkData; NTILES] {
+    fn init_jrk_data(seed: u8) -> [JrkData; NTILES] {
         let mut data: [JrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -180,9 +180,9 @@ mod snp {
     use ava::compute::snp::{self, Snp, SnpData};
     use test::Bencher;
 
-    fn init_snp_data(seed: usize) -> [SnpData; NTILES] {
+    fn init_snp_data(seed: u8) -> [SnpData; NTILES] {
         let mut data: [SnpData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -228,9 +228,9 @@ mod crk {
     use ava::compute::crk::{self, Crk, CrkData};
     use test::Bencher;
 
-    fn init_crk_data(seed: usize) -> [CrkData; NTILES] {
+    fn init_crk_data(seed: u8) -> [CrkData; NTILES] {
         let mut data: [CrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed(&[seed][..]);
+        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();

@@ -18,7 +18,7 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-rand = "~0.4"
+rand = "~0.5"
 rayon = "~1.0"
 serde = "~1.0"
 serde_derive = "~1.0"
