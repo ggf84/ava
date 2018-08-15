@@ -17,7 +17,7 @@ const N: usize = NTILES * TILE;
 
 fn init_particle_system(seed: u8, n: usize) -> ParticleSystem {
     let mut psys = ParticleSystem::new();
-    let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+    let mut rng = StdRng::from_seed([seed; 32]);
     for id in 0..n {
         let particle = Particle {
             id: id,
@@ -42,7 +42,7 @@ mod energy {
 
     fn init_energy_data(seed: u8) -> [EnergyData; NTILES] {
         let mut data: [EnergyData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+        let mut rng = StdRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -89,7 +89,7 @@ mod acc {
 
     fn init_acc_data(seed: u8) -> [AccData; NTILES] {
         let mut data: [AccData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+        let mut rng = StdRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -135,7 +135,7 @@ mod jrk {
 
     fn init_jrk_data(seed: u8) -> [JrkData; NTILES] {
         let mut data: [JrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+        let mut rng = StdRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -182,7 +182,7 @@ mod snp {
 
     fn init_snp_data(seed: u8) -> [SnpData; NTILES] {
         let mut data: [SnpData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+        let mut rng = StdRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
@@ -230,7 +230,7 @@ mod crk {
 
     fn init_crk_data(seed: u8) -> [CrkData; NTILES] {
         let mut data: [CrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng: StdRng = SeedableRng::from_seed([seed; 32]);
+        let mut rng = StdRng::from_seed([seed; 32]);
         for p in data.iter_mut() {
             p.eps = rng.gen();
             p.mass = rng.gen();
