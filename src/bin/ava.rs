@@ -10,27 +10,28 @@ use std::time::Instant;
 use ava::ics::imf::{EqualMass, Maschberger2013};
 use ava::ics::sdp::Plummer;
 use ava::ics::Model;
+use ava::real::Real;
 
 fn main() {
     let seed = [0; 32];
     let mut rng = StdRng::from_seed(seed);
 
+    let npart = 1024 * 4;
     let _imf = EqualMass::new(1.0);
     let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
-    let model = Model::new(imf, sdp);
+    let model = Model::new(&imf, &sdp, npart);
 
-    let mut ps = model.build(1024 * 4, &mut rng);
+    let mut ps = model.build(&mut rng);
 
-    /*
-    for p in ps.particles.iter() {
-        print!("{}\t{}", p.id, p.mass);
-        print!("\t{}\t{}\t{}", p.pos[0], p.pos[1], p.pos[2]);
-        print!("\t{}\t{}\t{}", p.vel[0], p.vel[1], p.vel[2]);
-        print!("\t{}", p.eps2);
-        println!();
-    }
-    */
+    // for p in ps.particles.iter() {
+    //     print!("{}\t{}", p.id, p.mass);
+    //     print!("\t{}\t{}\t{}", p.pos[0], p.pos[1], p.pos[2]);
+    //     print!("\t{}\t{}\t{}", p.vel[0], p.vel[1], p.vel[2]);
+    //     print!("\t{}", p.eps);
+    //     println!();
+    // }
+
     let (ke, pe) = ps.energies();
     eprintln!("{:?} {:?} {:?}", ke, pe, ke + pe);
     eprintln!(
@@ -41,8 +42,8 @@ fn main() {
     );
     eprintln!("");
 
-    let ps1 = model.build(1024 * 7, &mut rng);
-    let ps2 = model.build(1024 * 1, &mut rng);
+    let ps1 = Model::new(&imf, &sdp, 1024 * 7).build(&mut rng);
+    let ps2 = Model::new(&imf, &sdp, 1024 * 1).build(&mut rng);
     let ((iacc0,), (jacc0,)) = ps1.get_acc_p2p(&ps2);
     let mut ftot0 = [0.0; 3];
     for (i, p) in ps1.particles.iter().enumerate() {
@@ -208,14 +209,14 @@ fn main() {
     let seed = [0; 32];
     let mut rng = StdRng::from_seed(seed);
 
+    let npart = 256;
     let imf = EqualMass::new(1.0);
     let _imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
-    let model = Model::new(imf, sdp);
+    let model = Model::new(imf, sdp, npart);
 
-    let n = 256.0;
-    let mut psys = model.build(n as usize, &mut rng);
-    psys.set_eps(4.0 / n);
+    let mut psys = model.build(&mut rng);
+    psys.set_eps(4.0 / npart as Real);
 
     let eta = 0.5;
 

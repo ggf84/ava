@@ -1,9 +1,17 @@
 use real::Real;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+fn hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Particle {
     /// Id of the particle
-    pub id: usize,
+    pub id: u64,
 
     /// Time-step of the particle
     pub dt: Real,
@@ -43,7 +51,17 @@ pub struct Particle {
 }
 
 impl Particle {
-    pub fn new(id: usize, mass: Real, pos: [Real; 3], vel: [Real; 3]) -> Self {
+    pub fn new(mass: Real, pos: [Real; 3], vel: [Real; 3]) -> Self {
+        let state = (
+            mass.to_bits(),
+            pos[0].to_bits(),
+            pos[1].to_bits(),
+            pos[2].to_bits(),
+            vel[0].to_bits(),
+            vel[1].to_bits(),
+            vel[2].to_bits(),
+        );
+        let id = hash(&state);
         Particle {
             id: id,
             mass: mass,

@@ -15,12 +15,12 @@ const TILE: usize = 16 / size_of::<Real>();
 const NTILES: usize = 256 / TILE;
 const N: usize = NTILES * TILE;
 
-fn init_particle_system(seed: u8, n: usize) -> ParticleSystem {
+fn init_particle_system(seed: u8, npart: usize) -> ParticleSystem {
     let mut psys = ParticleSystem::new();
     let mut rng = StdRng::from_seed([seed; 32]);
-    for id in 0..n {
+    for id in 0..npart {
         let particle = Particle {
-            id: id,
+            id: id as u64,
             eps: rng.gen(),
             mass: rng.gen(),
             pos: rng.gen(),
