@@ -143,9 +143,11 @@ impl Simulation {
             psys: psys,
         }
     }
-    fn write_restart_file(&self) {
-        let mut writer = BufWriter::new(File::create("res.sim").unwrap());
+    fn write_restart_file(&self) -> Result<(), ::std::io::Error> {
+        let file = File::create("res.sim")?;
+        let mut writer = BufWriter::new(file);
         bincode::serialize_into(&mut writer, &self).unwrap();
+        Ok(())
     }
 }
 impl Simulation {
@@ -160,7 +162,7 @@ impl Simulation {
         self.logger.init(&self.psys);
         self.logger.log(self.tnow, &self.psys, &mut instant);
     }
-    pub fn evolve(&mut self, tend: Real) {
+    pub fn evolve(&mut self, tend: Real) -> Result<(), ::std::io::Error> {
         let mut instant = Instant::now();
         while self.tnow < tend {
             let tend = self.tnow + self.dtmax;
@@ -174,9 +176,10 @@ impl Simulation {
                 self.logger.log(self.tnow, &self.psys, &mut instant);
             }
             if self.tnow % self.dtres == 0.0 {
-                self.write_restart_file();
+                self.write_restart_file()?;
             }
         }
+        Ok(())
     }
 }
 

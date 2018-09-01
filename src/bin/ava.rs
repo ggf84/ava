@@ -4,54 +4,47 @@ extern crate rand;
 
 use rand::{SeedableRng, StdRng};
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter, Write};
 use std::time::Instant;
 
 use ava::ics::imf::{EqualMass, Maschberger2013};
 use ava::ics::sdp::Plummer;
 use ava::ics::Model;
-use ava::real::Real;
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let seed = [0; 32];
     let mut rng = StdRng::from_seed(seed);
 
-    let npart = 1024 * 4;
+    let npart = 256;
     let _imf = EqualMass::new(1.0);
     let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
-    let model = Model::new(&imf, &sdp, npart);
+    let model = Model::new(&imf, &sdp, 4 * npart, 0.0);
 
-    let mut ps = model.build(&mut rng);
+    let mut psys = model.build(&mut rng);
 
-    // for p in ps.particles.iter() {
-    //     print!("{}\t{}", p.id, p.mass);
-    //     print!("\t{}\t{}\t{}", p.pos[0], p.pos[1], p.pos[2]);
-    //     print!("\t{}\t{}\t{}", p.vel[0], p.vel[1], p.vel[2]);
-    //     print!("\t{}", p.eps);
-    //     println!();
-    // }
+    let file = File::create("cluster.txt")?;
+    let mut writer = BufWriter::new(file);
+    for p in psys.particles.iter() {
+        writeln!(
+            &mut writer,
+            "{} {} {} \
+             {} {} {} \
+             {} {} {}",
+            p.id, p.eps, p.mass, p.pos[0], p.pos[1], p.pos[2], p.vel[0], p.vel[1], p.vel[2],
+        )?;
+    }
 
-    let (ke, pe) = ps.energies();
-    eprintln!("{:?} {:?} {:?}", ke, pe, ke + pe);
-    eprintln!(
-        "{:#?} {:#?} {:#?}",
-        ps.com_mass(),
-        ps.com_pos(),
-        ps.com_vel()
-    );
-    eprintln!("");
-
-    let ps1 = Model::new(&imf, &sdp, 1024 * 7).build(&mut rng);
-    let ps2 = Model::new(&imf, &sdp, 1024 * 1).build(&mut rng);
-    let ((iacc0,), (jacc0,)) = ps1.get_acc_p2p(&ps2);
+    let psys1 = Model::new(&imf, &sdp, 7 * npart, 0.0).build(&mut rng);
+    let psys2 = Model::new(&imf, &sdp, 1 * npart, 0.0).build(&mut rng);
+    let ((iacc0,), (jacc0,)) = psys1.get_acc_p2p(&psys2);
     let mut ftot0 = [0.0; 3];
-    for (i, p) in ps1.particles.iter().enumerate() {
+    for (i, p) in psys1.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * iacc0[i][k];
         }
     }
-    for (j, p) in ps2.particles.iter().enumerate() {
+    for (j, p) in psys2.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * jacc0[j][k];
         }
@@ -61,9 +54,9 @@ fn main() {
     eprintln!("jacc0: {:?}", &jacc0[..2]);
     eprintln!("");
 
-    let (acc0,) = ps.get_acc();
+    let (acc0,) = psys.get_acc();
     let mut ftot0 = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
+    for (i, p) in psys.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
         }
@@ -72,10 +65,10 @@ fn main() {
     eprintln!("_acc0: {:?}", &acc0[..2]);
     eprintln!("");
 
-    let (acc0, acc1) = ps.get_jrk();
+    let (acc0, acc1) = psys.get_jrk();
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
+    for (i, p) in psys.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -87,16 +80,16 @@ fn main() {
     eprintln!("_acc1: {:?}", &acc1[..2]);
     eprintln!("");
 
-    for (i, p) in ps.particles.iter_mut().enumerate() {
+    for (i, p) in psys.particles.iter_mut().enumerate() {
         for k in 0..3 {
             p.acc0[k] = acc0[i][k];
         }
     }
-    let (acc0, acc1, acc2) = ps.get_snp();
+    let (acc0, acc1, acc2) = psys.get_snp();
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
+    for (i, p) in psys.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -111,18 +104,18 @@ fn main() {
     eprintln!("_acc2: {:?}", &acc2[..2]);
     eprintln!("");
 
-    for (i, p) in ps.particles.iter_mut().enumerate() {
+    for (i, p) in psys.particles.iter_mut().enumerate() {
         for k in 0..3 {
             p.acc0[k] = acc0[i][k];
             p.acc1[k] = acc1[i][k];
         }
     }
-    let (acc0, acc1, acc2, acc3) = ps.get_crk();
+    let (acc0, acc1, acc2, acc3) = psys.get_crk();
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
     let mut ftot3 = [0.0; 3];
-    for (i, p) in ps.particles.iter().enumerate() {
+    for (i, p) in psys.particles.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -142,64 +135,64 @@ fn main() {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.energies();
-        // ps1.energies();
-        // ps2.energies();
+        psys.energies();
+        // psys1.energies();
+        // psys2.energies();
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.len() as f64;
+        let n = psys.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("energies: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.get_acc();
-        // ps1.get_acc();
-        // ps2.get_acc();
-        // ps1.get_acc_p2p(&ps2);
+        psys.get_acc();
+        // psys1.get_acc();
+        // psys2.get_acc();
+        // psys1.get_acc_p2p(&psys2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.len() as f64;
+        let n = psys.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.get_jrk();
-        // ps1.get_jrk();
-        // ps2.get_jrk();
-        // ps1.get_jrk_p2p(&ps2);
+        psys.get_jrk();
+        // psys1.get_jrk();
+        // psys2.get_jrk();
+        // psys1.get_jrk_p2p(&psys2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.len() as f64;
+        let n = psys.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.get_snp();
-        // ps1.get_snp();
-        // ps2.get_snp();
-        // ps1.get_snp_p2p(&ps2);
+        psys.get_snp();
+        // psys1.get_snp();
+        // psys2.get_snp();
+        // psys1.get_snp_p2p(&psys2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.len() as f64;
+        let n = psys.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
     }
 
     for _ in 0..1 {
         let timer = Instant::now();
-        ps.get_crk();
-        // ps1.get_crk();
-        // ps2.get_crk();
-        // ps1.get_crk_p2p(&ps2);
+        psys.get_crk();
+        // psys1.get_crk();
+        // psys2.get_crk();
+        // psys1.get_crk_p2p(&psys2);
         let duration = timer.elapsed();
         let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = ps.len() as f64;
+        let n = psys.len() as f64;
         let ns_loop = elapsed as f64 / (n * n);
         eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
     }
@@ -211,12 +204,11 @@ fn main() {
 
     let npart = 256;
     let imf = EqualMass::new(1.0);
-    let _imf = Maschberger2013::new(0.01, 150.0);
+    // let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
-    let model = Model::new(imf, sdp, npart);
+    let model = Model::new(imf, sdp, npart, 1.0);
 
-    let mut psys = model.build(&mut rng);
-    psys.set_eps(4.0 / npart as Real);
+    let psys = model.build(&mut rng);
 
     let eta = 0.5;
 
@@ -240,14 +232,17 @@ fn main() {
 
     let mut sim = Simulation::new(integrator, tstep_scheme, psys);
     sim.init(dtres_pow, dtlog_pow, dtmax_pow);
-    sim.evolve(tend);
+    sim.evolve(tend)?;
 
-    let mut reader = BufReader::new(File::open("res.sim").unwrap());
+    let file = File::open("res.sim")?;
+    let mut reader = BufReader::new(file);
     let mut de_sim: Simulation = bincode::deserialize_from(&mut reader).unwrap();
     assert!(de_sim == sim);
 
-    de_sim.evolve(tend);
+    de_sim.evolve(tend)?;
     assert!(de_sim == sim);
+
+    Ok(())
 }
 
 // -- end of file --
