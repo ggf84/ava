@@ -110,7 +110,7 @@ impl ParticleSystem {
 
 /// Methods for center-of-mass determination and adjustment.
 impl ParticleSystem {
-    /// Get center-of-mass mass (a.k.a. total mass).
+    /// Get the total mass of the system.
     pub fn com_mass(&self) -> Real {
         let mut mtot = 0.0;
         for p in self.particles.iter() {
@@ -118,59 +118,45 @@ impl ParticleSystem {
         }
         mtot
     }
-    /// Get center-of-mass position.
-    pub fn com_pos(&self) -> [Real; 3] {
+    /// Get the total mass, position and velocity coordinates of the center-of-mass.
+    pub fn com_mass_pos_vel(&self) -> (Real, [Real; 3], [Real; 3]) {
         let mut mtot = 0.0;
         let mut rcom = [0.0; 3];
-        for p in self.particles.iter() {
-            for k in 0..3 {
-                rcom[k] += p.mass * p.pos[k];
-            }
-            mtot += p.mass;
-        }
-        rcom.iter_mut().for_each(|r| *r /= mtot);
-        rcom
-    }
-    /// Get center-of-mass velocity.
-    pub fn com_vel(&self) -> [Real; 3] {
-        let mut mtot = 0.0;
         let mut vcom = [0.0; 3];
         for p in self.particles.iter() {
+            mtot += p.mass;
             for k in 0..3 {
+                rcom[k] += p.mass * p.pos[k];
                 vcom[k] += p.mass * p.vel[k];
             }
-            mtot += p.mass;
         }
+        rcom.iter_mut().for_each(|r| *r /= mtot);
         vcom.iter_mut().for_each(|v| *v /= mtot);
-        vcom
+        (mtot, rcom, vcom)
     }
-    /// Moves center-of-mass to the given coordinates.
-    pub fn com_move_to(&mut self, pos: [Real; 3], vel: [Real; 3]) {
+    /// Moves the center-of-mass by the given position and velocity coordinates.
+    pub fn com_move_by(&mut self, dpos: [Real; 3], dvel: [Real; 3]) {
         for p in self.particles.iter_mut() {
             for k in 0..3 {
-                p.pos[k] += pos[k];
-                p.vel[k] += vel[k];
+                p.pos[k] += dpos[k];
+                p.vel[k] += dvel[k];
             }
         }
-    }
-    /// Moves center-of-mass to the origin of coordinates.
-    pub fn com_to_origin(&mut self) {
-        let mut rcom = self.com_pos();
-        let mut vcom = self.com_vel();
-        rcom.iter_mut().for_each(|r| *r = -*r);
-        vcom.iter_mut().for_each(|v| *v = -*v);
-        self.com_move_to(rcom, vcom);
     }
 }
 
 impl ParticleSystem {
-    pub fn scale_mass(&mut self, m_scale: Real) {
+    /// Scale masses by the given m_scale. Returns the total mass after scaling.
+    pub fn scale_mass(&mut self, m_scale: Real) -> Real {
+        let mut mtot = 0.0;
         for p in self.particles.iter_mut() {
             p.mass *= m_scale;
+            mtot += p.mass;
         }
+        mtot
     }
-
-    pub fn scale_to_virial(&mut self, ke: Real, pe: Real, q_vir: Real) {
+    /// Scale velocities to a given virial ratio, q_vir.
+    pub fn scale_to_virial(&mut self, q_vir: Real, ke: Real, pe: Real) {
         assert!(q_vir > 0.0);
         assert!(q_vir < 1.0);
         let v_scale = (-q_vir * pe / ke).sqrt();
@@ -180,8 +166,10 @@ impl ParticleSystem {
             }
         }
     }
-
-    pub fn scale_to_standard(&mut self, mtot: Real, pe: Real, q_vir: Real) {
+    /// Scale positions and velocities to standard units (G = M = -4E = 1). Returns the virial radius after scaling.
+    pub fn scale_to_standard(&mut self, q_vir: Real, ke: Real, pe: Real, mtot: Real) -> Real {
+        self.scale_to_virial(q_vir, ke, pe);
+        let rvir = mtot.powi(2) / (-2.0 * pe);
         let te0 = -0.25 * mtot.powf(5.0 / 3.0);
         let r_scale = (1.0 - q_vir) * pe / te0;
         let v_scale = 1.0 / r_scale.sqrt();
@@ -191,14 +179,15 @@ impl ParticleSystem {
                 p.vel[k] *= v_scale;
             }
         }
+        rvir * r_scale
     }
-
-    pub fn set_eps(&mut self, eps_factor: Real) {
+    /// Set the softening parameter.
+    pub fn set_eps(&mut self, eps_scale: Real, rvir: Real) {
         let n = self.len();
         // let c = 2.0;
-        // let eps = eps_factor * (c / n as Real);
+        // let eps = eps_scale * rvir * (c / n as Real);
         let c = (4.0 as Real / 27.0).sqrt();
-        let eps = eps_factor * (c / n as Real).sqrt();
+        let eps = eps_scale * rvir * (c / n as Real).sqrt();
         for p in self.particles.iter_mut() {
             p.eps = eps;
         }

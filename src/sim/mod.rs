@@ -239,8 +239,9 @@ impl Logger {
         println!("# {}\n# {}\n# {}", h0, h1, "-".repeat(h1.len()));
     }
     fn log(&mut self, tnow: Real, psys: &ParticleSystem, instant: &mut Instant) {
-        let rcom = psys.com_pos().iter().fold(0.0, |s, v| s + v * v).sqrt();
-        let vcom = psys.com_vel().iter().fold(0.0, |s, v| s + v * v).sqrt();
+        let (_, rcom, vcom) = psys.com_mass_pos_vel();
+        let rcom = rcom.iter().fold(0.0, |s, r| s + r * r).sqrt();
+        let vcom = vcom.iter().fold(0.0, |s, v| s + v * v).sqrt();
         let (ke, pe) = psys.energies();
         let te = ke + pe;
         let ve = 2.0 * ke + pe;

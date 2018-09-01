@@ -10,7 +10,7 @@ pub struct Model<IMF, SDP> {
     imf: IMF,
     sdp: SDP,
     npart: usize,
-    eps_factor: Real,
+    eps_scale: Real,
 }
 
 impl<IMF, SDP> Model<IMF, SDP>
@@ -18,12 +18,12 @@ where
     IMF: Distribution<Real>,
     SDP: Distribution<([Real; 3], [Real; 3])>,
 {
-    pub fn new(imf: IMF, sdp: SDP, npart: usize, eps_factor: Real) -> Self {
+    pub fn new(imf: IMF, sdp: SDP, npart: usize, eps_scale: Real) -> Self {
         Model {
             imf: imf,
             sdp: sdp,
             npart: npart,
-            eps_factor: eps_factor,
+            eps_scale: eps_scale,
         }
     }
 
@@ -31,29 +31,31 @@ where
         let mut psys = ParticleSystem::new();
         psys.particles = self.sample_iter(rng).take(self.npart).collect();
 
-        // psys.scale_mass(1.0 / self.npart as Real);
-
-        let mtot = psys.com_mass();
-        psys.scale_mass(1.0 / mtot);
+        let (mtot, [rx, ry, rz], [vx, vy, vz]) = psys.com_mass_pos_vel();
+        // let mtot = psys.scale_mass(1.0 / self.npart as Real);
+        let mtot = psys.scale_mass(1.0 / mtot);
+        psys.com_move_by([-rx, -ry, -rz], [-vx, -vy, -vz]); // reset center-of-mass to the origin of coordinates.
 
         let q_vir = 0.5;
-        let mtot = psys.com_mass();
-        psys.com_to_origin();
-
         let (ke, pe) = psys.energies();
-        psys.scale_to_virial(ke, pe, q_vir);
-        psys.scale_to_standard(mtot, pe, q_vir);
+        let rvir = psys.scale_to_standard(q_vir, ke, pe, mtot);
 
-        if self.eps_factor > 0.0 {
-            psys.set_eps(self.eps_factor);
+        if self.eps_scale > 0.0 {
+            psys.set_eps(self.eps_scale, rvir);
             let (ke, pe) = psys.energies();
-            psys.scale_to_virial(ke, pe, q_vir);
-            psys.scale_to_standard(mtot, pe, q_vir);
+            let _ = psys.scale_to_standard(q_vir, ke, pe, mtot);
         }
 
         let (ke, pe) = psys.energies();
         let rvir = mtot.powi(2) / (-2.0 * pe);
-        eprintln!("{:?} {:?} {:?} {:?} {:?}", mtot, ke, pe, ke + pe, rvir);
+        eprintln!(
+            "mtot: {:?}\nke: {:?}\npe: {:?}\nte: {:?}\nrvir: {:?}",
+            mtot,
+            ke,
+            pe,
+            ke + pe,
+            rvir
+        );
 
         psys
     }
