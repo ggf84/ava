@@ -8,7 +8,7 @@ use std::io::{BufReader, BufWriter, Write};
 use std::time::Instant;
 
 use ava::ics::imf::{EqualMass, Maschberger2013};
-use ava::ics::sdp::Plummer;
+use ava::ics::sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer};
 use ava::ics::Model;
 
 fn main() -> Result<(), std::io::Error> {
@@ -16,9 +16,10 @@ fn main() -> Result<(), std::io::Error> {
     let mut rng = StdRng::from_seed(seed);
 
     let npart = 256;
-    let _imf = EqualMass::new(1.0);
-    let imf = Maschberger2013::new(0.01, 150.0);
-    let sdp = Plummer::new();
+    let imf = EqualMass::new(1.0);
+    // let imf = Maschberger2013::new(0.01, 150.0);
+    // let sdp = Plummer::new();
+    let sdp = Dehnen1::new();
     let model = Model::new(&imf, &sdp, 4 * npart, 0.0);
 
     let mut psys = model.build(&mut rng);
@@ -203,9 +204,10 @@ fn main() -> Result<(), std::io::Error> {
     let mut rng = StdRng::from_seed(seed);
 
     let npart = 256;
-    let imf = EqualMass::new(1.0);
-    // let imf = Maschberger2013::new(0.01, 150.0);
+    // let imf = EqualMass::new(1.0);
+    let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
+    // let sdp = Dehnen0::new();
     let model = Model::new(imf, sdp, npart, 1.0);
 
     let psys = model.build(&mut rng);
