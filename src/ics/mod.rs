@@ -7,10 +7,11 @@ pub mod imf;
 pub mod sdp;
 
 pub struct Model<IMF, SDP> {
+    npart: usize,
     imf: IMF,
     sdp: SDP,
-    npart: usize,
-    eps_scale: Real,
+    q_vir: Real,
+    eps_param: Option<Real>,
 }
 
 impl<IMF, SDP> Model<IMF, SDP>
@@ -18,12 +19,13 @@ where
     IMF: Distribution<Real>,
     SDP: Distribution<([Real; 3], [Real; 3])>,
 {
-    pub fn new(imf: IMF, sdp: SDP, npart: usize, eps_scale: Real) -> Self {
+    pub fn new(npart: usize, imf: IMF, sdp: SDP, q_vir: Real, eps_param: Option<Real>) -> Self {
         Model {
-            imf: imf,
-            sdp: sdp,
-            npart: npart,
-            eps_scale: eps_scale,
+            npart,
+            imf,
+            sdp,
+            q_vir,
+            eps_param,
         }
     }
 
@@ -32,19 +34,15 @@ where
         psys.particles = self.sample_iter(rng).take(self.npart).collect();
 
         let (mtot, [rx, ry, rz], [vx, vy, vz]) = psys.com_mass_pos_vel();
-        // let mtot = psys.scale_mass(1.0 / self.npart as Real);
         let mtot = psys.scale_mass(1.0 / mtot);
         psys.com_move_by([-rx, -ry, -rz], [-vx, -vy, -vz]); // reset center-of-mass to the origin of coordinates.
 
-        let q_vir = 0.5;
-        let (ke, pe) = psys.energies();
-        let rvir = psys.scale_to_standard(q_vir, ke, pe, mtot);
-
-        if self.eps_scale > 0.0 {
-            psys.set_eps(self.eps_scale, rvir);
-            let (ke, pe) = psys.energies();
-            let _ = psys.scale_to_standard(q_vir, ke, pe, mtot);
+        if let Some(eps_param) = self.eps_param {
+            psys.set_eps(eps_param * 1.0); // assume rvir == 1
         }
+        let (ke, pe) = psys.energies();
+        let ke = psys.scale_to_virial(self.q_vir, ke, pe);
+        psys.scale_to_standard(-0.25, ke + pe);
 
         let (ke, pe) = psys.energies();
         let rvir = mtot.powi(2) / (-2.0 * pe);

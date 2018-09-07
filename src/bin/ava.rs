@@ -20,7 +20,7 @@ fn main() -> Result<(), std::io::Error> {
     // let imf = Maschberger2013::new(0.01, 150.0);
     // let sdp = Plummer::new();
     let sdp = Dehnen1::new();
-    let model = Model::new(&imf, &sdp, 4 * npart, 0.0);
+    let model = Model::new(4 * npart, &imf, &sdp, 0.5, None);
 
     let mut psys = model.build(&mut rng);
 
@@ -36,23 +36,28 @@ fn main() -> Result<(), std::io::Error> {
         )?;
     }
 
-    let psys1 = Model::new(&imf, &sdp, 7 * npart, 0.0).build(&mut rng);
-    let psys2 = Model::new(&imf, &sdp, 1 * npart, 0.0).build(&mut rng);
-    let ((iacc0,), (jacc0,)) = psys1.get_acc_p2p(&psys2);
+    let psys1 = Model::new(7 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
+    let psys2 = Model::new(3 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
+    let ((iacc0_21,), (jacc0_21,)) = psys2.get_acc_p2p(&psys1);
+    let ((iacc0_12,), (jacc0_12,)) = psys1.get_acc_p2p(&psys2);
+    assert!(iacc0_21 == jacc0_12);
+    assert!(iacc0_12 == jacc0_21);
     let mut ftot0 = [0.0; 3];
     for (i, p) in psys1.particles.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * iacc0[i][k];
+            ftot0[k] += p.mass * iacc0_12[i][k];
         }
     }
     for (j, p) in psys2.particles.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * jacc0[j][k];
+            ftot0[k] += p.mass * jacc0_12[j][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
-    eprintln!("iacc0: {:?}", &iacc0[..2]);
-    eprintln!("jacc0: {:?}", &jacc0[..2]);
+    eprintln!("iacc0_12: {:?}", &iacc0_12[..2]);
+    eprintln!("jacc0_21: {:?}", &jacc0_21[..2]);
+    eprintln!("jacc0_12: {:?}", &jacc0_12[..2]);
+    eprintln!("iacc0_21: {:?}", &iacc0_21[..2]);
     eprintln!("");
 
     let (acc0,) = psys.get_acc();
@@ -208,7 +213,7 @@ fn main() -> Result<(), std::io::Error> {
     let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
     // let sdp = Dehnen0::new();
-    let model = Model::new(imf, sdp, npart, 1.0);
+    let model = Model::new(npart, imf, sdp, 0.5, Some(1.0));
 
     let psys = model.build(&mut rng);
 

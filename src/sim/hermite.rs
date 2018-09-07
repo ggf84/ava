@@ -131,13 +131,17 @@ impl Hermite for Hermite4 {
         self.npec
     }
     fn init_dt(&self, dtmax: Real, psys: &mut [Particle]) {
+        // If all velocities are initially zero, then acc1 == 0. This means that
+        // in order to have a robust value for dt we need to compute acc2 too.
+        Hermite6::new(self.eta, self.npec).evaluate(psys.len(), &mut psys[..]);
         for p in psys.iter_mut() {
-            let vv = 0.0; // p.vel.iter().fold(0.0, |s, v| s + v * v);
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = 0.0; // p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let u = a0 + (vv * a1).sqrt();
+            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
+
+            let u = a0;
             let l = a1 + (a0 * a2).sqrt();
+
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt).min(dtmax);
         }
@@ -229,8 +233,10 @@ impl Hermite for Hermite4 {
             let a1 = pnew.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
             let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
+
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
+
             let dtnew = self.eta * (u / l).sqrt();
             pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }
@@ -263,9 +269,11 @@ impl Hermite for Hermite6 {
             let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = 0.0; // p.acc3.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = a1 * (a2 / a0); // p.acc3.iter().fold(0.0, |s, v| s + v * v);
+
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
+
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt).min(dtmax);
         }
@@ -405,6 +413,7 @@ impl Hermite for Hermite6 {
 
             let u = b2 + (b1 * b3).sqrt();
             let l = b3 + (b2 * b4).sqrt();
+
             let dtnew = self.eta * (u / l).sqrt();
             pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }
@@ -438,8 +447,8 @@ impl Hermite for Hermite8 {
             let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
             let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
             let a3 = p.acc3.iter().fold(0.0, |s, v| s + v * v);
-            let a4 = 0.0; // p.acc4.iter().fold(0.0, |s, v| s + v * v);
-            let a5 = 0.0; // p.acc5.iter().fold(0.0, |s, v| s + v * v);
+            let a4 = a2 * (a2 / a0); // p.acc4.iter().fold(0.0, |s, v| s + v * v);
+            let a5 = a3 * (a2 / a0); // p.acc5.iter().fold(0.0, |s, v| s + v * v);
 
             let b1 = a1 + (a0 * a2).sqrt();
             let b2 = a2 + (a1 * a3).sqrt();
@@ -448,6 +457,7 @@ impl Hermite for Hermite8 {
 
             let u = b2 + (b1 * b3).sqrt();
             let l = b3 + (b2 * b4).sqrt();
+
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt).min(dtmax);
         }
@@ -627,6 +637,7 @@ impl Hermite for Hermite8 {
 
             let u = c3 + (c2 * c4).sqrt();
             let l = c4 + (c3 * c5).sqrt();
+
             let dtnew = self.eta * (u / l).sqrt();
             pnew.dt = to_power_of_two(dtnew).min(dtlim);
         }

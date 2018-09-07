@@ -146,7 +146,9 @@ impl ParticleSystem {
 }
 
 impl ParticleSystem {
-    /// Scale masses by the given m_scale. Returns the total mass after scaling.
+    /// Scale masses by a given factor.
+    ///
+    /// Returns the total mass after scaling.
     pub fn scale_mass(&mut self, m_scale: Real) -> Real {
         let mut mtot = 0.0;
         for p in self.particles.iter_mut() {
@@ -155,23 +157,8 @@ impl ParticleSystem {
         }
         mtot
     }
-    /// Scale velocities to a given virial ratio, q_vir.
-    pub fn scale_to_virial(&mut self, q_vir: Real, ke: Real, pe: Real) {
-        assert!(q_vir > 0.0);
-        assert!(q_vir < 1.0);
-        let v_scale = (-q_vir * pe / ke).sqrt();
-        for p in self.particles.iter_mut() {
-            for k in 0..3 {
-                p.vel[k] *= v_scale;
-            }
-        }
-    }
-    /// Scale positions and velocities to standard units (G = M = -4E = 1). Returns the virial radius after scaling.
-    pub fn scale_to_standard(&mut self, q_vir: Real, ke: Real, pe: Real, mtot: Real) -> Real {
-        self.scale_to_virial(q_vir, ke, pe);
-        let rvir = mtot.powi(2) / (-2.0 * pe);
-        let te0 = -0.25 * mtot.powf(5.0 / 3.0);
-        let r_scale = (1.0 - q_vir) * pe / te0;
+    /// Scale positions and velocities by a given factor.
+    pub fn scale_pos_vel(&mut self, r_scale: Real) {
         let v_scale = 1.0 / r_scale.sqrt();
         for p in self.particles.iter_mut() {
             for k in 0..3 {
@@ -179,15 +166,32 @@ impl ParticleSystem {
                 p.vel[k] *= v_scale;
             }
         }
-        rvir * r_scale
+    }
+    /// Scale velocities to a given virial ratio.
+    ///
+    /// Returns the kinetic energy after the scaling.
+    pub fn scale_to_virial(&mut self, q_vir: Real, ke: Real, pe: Real) -> Real {
+        assert!(q_vir < 1.0);
+        let v_scale = (-q_vir * pe / ke).sqrt();
+        for p in self.particles.iter_mut() {
+            for k in 0..3 {
+                p.vel[k] *= v_scale;
+            }
+        }
+        -q_vir * pe
+    }
+    /// Scale positions and velocities to standard units (G = M = -4E = 1).
+    pub fn scale_to_standard(&mut self, te0: Real, te: Real) {
+        let r_scale = te / te0;
+        self.scale_pos_vel(r_scale);
     }
     /// Set the softening parameter.
-    pub fn set_eps(&mut self, eps_scale: Real, rvir: Real) {
+    pub fn set_eps(&mut self, eps_scale: Real) {
         let n = self.len();
         // let c = 2.0;
-        // let eps = eps_scale * rvir * (c / n as Real);
+        // let eps = eps_scale * (c / n as Real);
         let c = (4.0 as Real / 27.0).sqrt();
-        let eps = eps_scale * rvir * (c / n as Real).sqrt();
+        let eps = eps_scale * (c / n as Real).sqrt();
         for p in self.particles.iter_mut() {
             p.eps = eps;
         }
