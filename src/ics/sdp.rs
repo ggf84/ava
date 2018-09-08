@@ -48,7 +48,7 @@ impl SDP for Dehnen0 {
         m_13 / (1.0 - m_13)
     }
     fn sigma2_1d(r: Real) -> Real {
-        ((1.0 + 6.0 * r) / (r + 1.0).powi(2)) / 30.0
+        ((6.0 * r + 1.0) / (r + 1.0).powi(2)) / 30.0
     }
 }
 
@@ -86,8 +86,27 @@ impl SDP for Dehnen1 {
         m_12 / (1.0 - m_12)
     }
     fn sigma2_1d(r: Real) -> Real {
-        ((r + 1.0).powi(4) * (1.0 / r).ln_1p()
-            - (((r + 7.0 / 2.0) * r + 13.0 / 3.0) * r + 25.0 / 12.0)) * r / (r + 1.0)
+        // ((r + 1.0).powi(4) * (1.0 / r).ln_1p()
+        //     - (((r + 7.0 / 2.0) * r + 13.0 / 3.0) * r + 25.0 / 12.0)) * r / (r + 1.0)
+        if r <= 3.0 {
+            // This formula can be difficult to evaluate at large r
+            // because of near cancellations between the terms.
+            let a = (1.0 / r).ln_1p();
+            let b = 4.0 * a - 1.0;
+            let c = 6.0 * a - 7.0 / 2.0;
+            let d = 4.0 * a - 13.0 / 3.0;
+            let e = a - 25.0 / 12.0;
+            ((((a * r + b) * r + c) * r + d) * r + e) * r / (r + 1.0)
+        } else {
+            // For large r use the asymptotic series up to the 1/r^5 term.
+            let rinv = 1.0 / r;
+            let a = 125.0 / 504.0;
+            let b = -69.0 / 280.0;
+            let c = 17.0 / 70.0;
+            let d = -7.0 / 30.0;
+            let e = 1.0 / 5.0;
+            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+        }
     }
 }
 
@@ -106,8 +125,27 @@ impl SDP for Dehnen32 {
         m_23 / (1.0 - m_23)
     }
     fn sigma2_1d(r: Real) -> Real {
-        (-4.0 * (r * (r + 1.0).powi(3)) * (1.0 / r).ln_1p()
-            + (((4.0 * r + 10.0) * r + 22.0 / 3.0) * r + 1.0)) * (r / (r + 1.0)).sqrt()
+        // (-4.0 * (r * (r + 1.0).powi(3)) * (1.0 / r).ln_1p()
+        //     + (((4.0 * r + 10.0) * r + 22.0 / 3.0) * r + 1.0)) * (r / (r + 1.0)).sqrt()
+        if r <= 3.0 {
+            // This formula can be difficult to evaluate at large r
+            // because of near cancellations between the terms.
+            let a = -(1.0 / r).ln_1p();
+            let b = 3.0 * a + 1.0;
+            let c = 3.0 * a + 5.0 / 2.0;
+            let d = a + 11.0 / 6.0;
+            let e = 1.0 / 4.0;
+            ((((a * r + b) * r + c) * r + d) * r + e) * 4.0 * (r / (r + 1.0)).sqrt()
+        } else {
+            // For large r use the asymptotic series up to the 1/r^5 term.
+            let rinv = 1.0 / r;
+            let a = 817.0 / 8064.0;
+            let b = -13.0 / 112.0;
+            let c = 23.0 / 168.0;
+            let d = -1.0 / 6.0;
+            let e = 1.0 / 5.0;
+            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+        }
     }
 }
 
@@ -125,8 +163,27 @@ impl SDP for Dehnen2 {
         m / (1.0 - m)
     }
     fn sigma2_1d(r: Real) -> Real {
-        6.0 * (r * (r + 1.0)).powi(2) * (1.0 / r).ln_1p()
-            - (((6.0 * r + 9.0) * r + 2.0) * r - 1.0 / 2.0)
+        // 6.0 * (r * (r + 1.0)).powi(2) * (1.0 / r).ln_1p()
+        //     - (((6.0 * r + 9.0) * r + 2.0) * r - 1.0 / 2.0)
+        if r <= 3.0 {
+            // This formula can be difficult to evaluate at large r
+            // because of near cancellations between the terms.
+            let a = 6.0 * (1.0 / r).ln_1p();
+            let b = 2.0 * a - 6.0;
+            let c = a - 9.0;
+            let d = -2.0;
+            let e = 1.0 / 2.0;
+            (((a * r + b) * r + c) * r + d) * r + e
+        } else {
+            // For large r use the asymptotic series up to the 1/r^5 term.
+            let rinv = 1.0 / r;
+            let a = 1.0 / 42.0;
+            let b = -1.0 / 28.0;
+            let c = 2.0 / 35.0;
+            let d = -1.0 / 10.0;
+            let e = 1.0 / 5.0;
+            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+        }
     }
 }
 
@@ -141,8 +198,7 @@ macro_rules! impl_distribution {
         $(
             impl $name {
                 pub fn new() -> Self {
-                    let rh = Self::radius_m(0.5);
-                    let mfrac = Self::mass_r(50.0 * rh);
+                    let mfrac = Self::mass_r(25.0 / Self::R_SCALE_FACTOR);
                     $name {
                         m_uniform: Uniform::new(0.0, mfrac),
                     }
@@ -155,10 +211,10 @@ macro_rules! impl_distribution {
                     let [rx, ry, rz] = to_xyz(r * Self::R_SCALE_FACTOR, rng);
 
                     let sigma2_1d = Self::sigma2_1d(r);
-                    let v_normal = Normal::new(0.0, (sigma2_1d * Self::V2_SCALE_FACTOR).sqrt());
-                    let vx = v_normal.sample(rng);
-                    let vy = v_normal.sample(rng);
-                    let vz = v_normal.sample(rng);
+                    let v_normal = Normal::new(0.0, (sigma2_1d * Self::V2_SCALE_FACTOR).sqrt() as f64);
+                    let vx = v_normal.sample(rng) as Real;
+                    let vy = v_normal.sample(rng) as Real;
+                    let vz = v_normal.sample(rng) as Real;
 
                     ([rx, ry, rz], [vx, vy, vz])
                 }
