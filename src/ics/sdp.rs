@@ -91,21 +91,21 @@ impl SDP for Dehnen1 {
         if r <= 3.0 {
             // This formula can be difficult to evaluate at large r
             // because of near cancellations between the terms.
-            let a = (1.0 / r).ln_1p();
-            let b = 4.0 * a - 1.0;
-            let c = 6.0 * a - 7.0 / 2.0;
-            let d = 4.0 * a - 13.0 / 3.0;
-            let e = a - 25.0 / 12.0;
-            ((((a * r + b) * r + c) * r + d) * r + e) * r / (r + 1.0)
+            let c4 = (1.0 / r).ln_1p();
+            let c3 = 4.0 * c4 - 1.0;
+            let c2 = 6.0 * c4 - 7.0 / 2.0;
+            let c1 = 4.0 * c4 - 13.0 / 3.0;
+            let c0 = c4 - 25.0 / 12.0;
+            ((((c4 * r + c3) * r + c2) * r + c1) * r + c0) * r / (r + 1.0)
         } else {
             // For large r use the asymptotic series up to the 1/r^5 term.
             let rinv = 1.0 / r;
-            let a = 125.0 / 504.0;
-            let b = -69.0 / 280.0;
-            let c = 17.0 / 70.0;
-            let d = -7.0 / 30.0;
-            let e = 1.0 / 5.0;
-            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+            let c4 = 125.0 / 504.0;
+            let c3 = -69.0 / 280.0;
+            let c2 = 17.0 / 70.0;
+            let c1 = -7.0 / 30.0;
+            let c0 = 1.0 / 5.0;
+            ((((c4 * rinv + c3) * rinv + c2) * rinv + c1) * rinv + c0) * rinv
         }
     }
 }
@@ -130,21 +130,21 @@ impl SDP for Dehnen32 {
         if r <= 3.0 {
             // This formula can be difficult to evaluate at large r
             // because of near cancellations between the terms.
-            let a = -(1.0 / r).ln_1p();
-            let b = 3.0 * a + 1.0;
-            let c = 3.0 * a + 5.0 / 2.0;
-            let d = a + 11.0 / 6.0;
-            let e = 1.0 / 4.0;
-            ((((a * r + b) * r + c) * r + d) * r + e) * 4.0 * (r / (r + 1.0)).sqrt()
+            let c4 = -(1.0 / r).ln_1p();
+            let c3 = 3.0 * c4 + 1.0;
+            let c2 = 3.0 * c4 + 5.0 / 2.0;
+            let c1 = c4 + 11.0 / 6.0;
+            let c0 = 1.0 / 4.0;
+            ((((c4 * r + c3) * r + c2) * r + c1) * r + c0) * 4.0 * (r / (r + 1.0)).sqrt()
         } else {
             // For large r use the asymptotic series up to the 1/r^5 term.
             let rinv = 1.0 / r;
-            let a = 817.0 / 8064.0;
-            let b = -13.0 / 112.0;
-            let c = 23.0 / 168.0;
-            let d = -1.0 / 6.0;
-            let e = 1.0 / 5.0;
-            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+            let c4 = 817.0 / 8064.0;
+            let c3 = -13.0 / 112.0;
+            let c2 = 23.0 / 168.0;
+            let c1 = -1.0 / 6.0;
+            let c0 = 1.0 / 5.0;
+            ((((c4 * rinv + c3) * rinv + c2) * rinv + c1) * rinv + c0) * rinv
         }
     }
 }
@@ -168,21 +168,21 @@ impl SDP for Dehnen2 {
         if r <= 3.0 {
             // This formula can be difficult to evaluate at large r
             // because of near cancellations between the terms.
-            let a = 6.0 * (1.0 / r).ln_1p();
-            let b = 2.0 * a - 6.0;
-            let c = a - 9.0;
-            let d = -2.0;
-            let e = 1.0 / 2.0;
-            (((a * r + b) * r + c) * r + d) * r + e
+            let c4 = 6.0 * (1.0 / r).ln_1p();
+            let c3 = 2.0 * c4 - 6.0;
+            let c2 = c4 - 9.0;
+            let c1 = -2.0;
+            let c0 = 1.0 / 2.0;
+            (((c4 * r + c3) * r + c2) * r + c1) * r + c0
         } else {
             // For large r use the asymptotic series up to the 1/r^5 term.
             let rinv = 1.0 / r;
-            let a = 1.0 / 42.0;
-            let b = -1.0 / 28.0;
-            let c = 2.0 / 35.0;
-            let d = -1.0 / 10.0;
-            let e = 1.0 / 5.0;
-            ((((a * rinv + b) * rinv + c) * rinv + d) * rinv + e) * rinv
+            let c4 = 1.0 / 42.0;
+            let c3 = -1.0 / 28.0;
+            let c2 = 2.0 / 35.0;
+            let c1 = -1.0 / 10.0;
+            let c0 = 1.0 / 5.0;
+            ((((c4 * rinv + c3) * rinv + c2) * rinv + c1) * rinv + c0) * rinv
         }
     }
 }
@@ -202,6 +202,11 @@ macro_rules! impl_distribution {
                     $name {
                         m_uniform: Uniform::new(0.0, mfrac),
                     }
+                }
+            }
+            impl Default for $name {
+                fn default() -> Self {
+                    Self::new()
                 }
             }
             impl Distribution<([Real; 3], [Real; 3])> for $name {

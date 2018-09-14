@@ -36,17 +36,17 @@ struct EnergyDst {
 
 impl<'a> ToSoA for EnergySrcSlice<'a> {
     type SrcTypeSoA = EnergySrcSoA;
-    fn to_soa(&self, p_src: &mut [Self::SrcTypeSoA]) {
+    fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
         let n = self.len();
-        let n_tiles = p_src.len();
-        for jj in 0..n_tiles {
+        let mut jj = 0;
+        for p_src in ps_src.iter_mut() {
             for j in 0..TILE {
-                let jjj = TILE * jj + j;
-                if jjj < n {
-                    p_src[jj].eps[j] = self.eps[jjj];
-                    p_src[jj].mass[j] = self.mass[jjj];
-                    loop1(3, |k| p_src[jj].rdot0[k][j] = self.rdot0[jjj][k]);
-                    loop1(3, |k| p_src[jj].rdot1[k][j] = self.rdot1[jjj][k]);
+                if jj < n {
+                    p_src.eps[j] = self.eps[jj];
+                    p_src.mass[j] = self.mass[jj];
+                    loop1(3, |k| p_src.rdot0[k][j] = self.rdot0[jj][k]);
+                    loop1(3, |k| p_src.rdot1[k][j] = self.rdot1[jj][k]);
+                    jj += 1;
                 }
             }
         }
@@ -56,15 +56,15 @@ impl<'a> ToSoA for EnergySrcSlice<'a> {
 impl<'a> FromSoA for EnergyDstSliceMut<'a> {
     type SrcTypeSoA = EnergySrcSoA;
     type DstTypeSoA = EnergyDstSoA;
-    fn from_soa(&mut self, p_src: &[Self::SrcTypeSoA], p_dst: &[Self::DstTypeSoA]) {
+    fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
         let n = self.len();
-        let n_tiles = p_src.len();
-        for jj in 0..n_tiles {
+        let mut jj = 0;
+        for (_p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
             for j in 0..TILE {
-                let jjj = TILE * jj + j;
-                if jjj < n {
-                    self.ekin[jjj] += p_dst[jj].ekin[j];
-                    self.epot[jjj] += p_dst[jj].epot[j];
+                if jj < n {
+                    self.ekin[jj] += p_dst.ekin[j];
+                    self.epot[jj] += p_dst.epot[j];
+                    jj += 1;
                 }
             }
         }

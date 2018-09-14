@@ -12,8 +12,7 @@ use sys::system::ParticleSystem;
 
 fn to_power_of_two(dt: Real) -> Real {
     let pow = dt.log2().floor();
-    let dtq = (2.0 as Real).powi(pow as i32);
-    dtq
+    (2.0 as Real).powi(pow as i32)
 }
 
 pub(crate) trait Evolver {
@@ -139,8 +138,8 @@ impl Simulation {
             dtmax: 0.0,
             logger: Default::default(),
             integrator: integrator.into(),
-            tstep_scheme: tstep_scheme,
-            psys: psys,
+            tstep_scheme,
+            psys,
         }
     }
     fn write_restart_file(&self) -> Result<(), ::std::io::Error> {
@@ -255,10 +254,12 @@ impl Logger {
         self.counter_cum += self.counter;
         self.duration_cum += self.duration;
 
-        let duration =
-            self.duration.subsec_nanos() as f64 * 1.0e-9 + self.duration.as_secs() as f64;
-        let duration_cum =
-            self.duration_cum.subsec_nanos() as f64 * 1.0e-9 + self.duration_cum.as_secs() as f64;
+        let duration = (1_000_000_000 * u128::from(self.duration.as_secs())
+            + u128::from(self.duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let duration_cum = (1_000_000_000 * u128::from(self.duration_cum.as_secs())
+            + u128::from(self.duration_cum.subsec_nanos())) as f64
+            * 1.0e-9;
 
         let line = format!(
             "{:>11.4} {:>+10.3e} {:>+10.3e} {:>+10.3e} \

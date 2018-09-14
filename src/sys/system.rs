@@ -1,5 +1,6 @@
 use compute;
 use real::Real;
+use std::slice::{Iter, IterMut};
 use sys::particles::Particle;
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -14,11 +15,20 @@ impl ParticleSystem {
     pub fn len(&self) -> usize {
         self.particles.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.particles.is_empty()
+    }
+    pub fn iter(&self) -> Iter<Particle> {
+        self.particles.iter()
+    }
+    pub fn iter_mut(&mut self) -> IterMut<Particle> {
+        self.particles.iter_mut()
+    }
     pub fn sort_by_dt(&mut self, n: usize) {
         self.particles[..n].sort_unstable_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
     pub fn set_shared_dt(&mut self, dt: Real) {
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             p.dt = dt;
         }
     }
@@ -113,7 +123,7 @@ impl ParticleSystem {
     /// Get the total mass of the system.
     pub fn com_mass(&self) -> Real {
         let mut mtot = 0.0;
-        for p in self.particles.iter() {
+        for p in self.iter() {
             mtot += p.mass;
         }
         mtot
@@ -123,7 +133,7 @@ impl ParticleSystem {
         let mut mtot = 0.0;
         let mut rcom = [0.0; 3];
         let mut vcom = [0.0; 3];
-        for p in self.particles.iter() {
+        for p in self.iter() {
             mtot += p.mass;
             for k in 0..3 {
                 rcom[k] += p.mass * p.pos[k];
@@ -136,7 +146,7 @@ impl ParticleSystem {
     }
     /// Moves the center-of-mass by the given position and velocity coordinates.
     pub fn com_move_by(&mut self, dpos: [Real; 3], dvel: [Real; 3]) {
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             for k in 0..3 {
                 p.pos[k] += dpos[k];
                 p.vel[k] += dvel[k];
@@ -151,7 +161,7 @@ impl ParticleSystem {
     /// Returns the total mass after scaling.
     pub fn scale_mass(&mut self, m_scale: Real) -> Real {
         let mut mtot = 0.0;
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             p.mass *= m_scale;
             mtot += p.mass;
         }
@@ -160,7 +170,7 @@ impl ParticleSystem {
     /// Scale positions and velocities by a given factor.
     pub fn scale_pos_vel(&mut self, r_scale: Real) {
         let v_scale = 1.0 / r_scale.sqrt();
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             for k in 0..3 {
                 p.pos[k] *= r_scale;
                 p.vel[k] *= v_scale;
@@ -173,7 +183,7 @@ impl ParticleSystem {
     pub fn scale_to_virial(&mut self, q_vir: Real, ke: Real, pe: Real) -> Real {
         assert!(q_vir < 1.0);
         let v_scale = (-q_vir * pe / ke).sqrt();
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             for k in 0..3 {
                 p.vel[k] *= v_scale;
             }
@@ -192,7 +202,7 @@ impl ParticleSystem {
         // let eps = eps_scale * (c / n as Real);
         let c = (4.0 as Real / 27.0).sqrt();
         let eps = eps_scale * (c / n as Real).sqrt();
-        for p in self.particles.iter_mut() {
+        for p in self.iter_mut() {
             p.eps = eps;
         }
     }

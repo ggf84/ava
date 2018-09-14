@@ -17,8 +17,8 @@ fn calc_dtlim(tnew: Real, dtmax: Real) -> Real {
 
 fn count_nact(tnew: Real, psys: &ParticleSystem) -> usize {
     let mut nact = 0;
-    for p in psys.particles.iter() {
-        if p.tnow + p.dt == tnew {
+    for p in psys.iter() {
+        if (p.tnow + p.dt).to_bits() == tnew.to_bits() {
             nact += 1
         } else {
             break;
@@ -118,10 +118,7 @@ pub struct Hermite4 {
 }
 impl Hermite4 {
     pub fn new(eta: Real, npec: u8) -> Self {
-        Hermite4 {
-            eta: eta,
-            npec: npec,
-        }
+        Hermite4 { eta, npec }
     }
 }
 impl Hermite for Hermite4 {
@@ -252,10 +249,7 @@ pub struct Hermite6 {
 }
 impl Hermite6 {
     pub fn new(eta: Real, npec: u8) -> Self {
-        Hermite6 {
-            eta: eta,
-            npec: npec,
-        }
+        Hermite6 { eta, npec }
     }
 }
 impl Hermite for Hermite6 {
@@ -429,10 +423,7 @@ pub struct Hermite8 {
 }
 impl Hermite8 {
     pub fn new(eta: Real, npec: u8) -> Self {
-        Hermite8 {
-            eta: eta,
-            npec: npec,
-        }
+        Hermite8 { eta, npec }
     }
 }
 impl Hermite for Hermite8 {

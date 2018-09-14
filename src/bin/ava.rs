@@ -26,7 +26,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let file = File::create("cluster.txt")?;
     let mut writer = BufWriter::new(file);
-    for p in psys.particles.iter() {
+    for p in psys.iter() {
         writeln!(
             &mut writer,
             "{} {} {} \
@@ -43,12 +43,12 @@ fn main() -> Result<(), std::io::Error> {
     assert!(iacc0_21 == jacc0_12);
     assert!(iacc0_12 == jacc0_21);
     let mut ftot0 = [0.0; 3];
-    for (i, p) in psys1.particles.iter().enumerate() {
+    for (i, p) in psys1.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * iacc0_12[i][k];
         }
     }
-    for (j, p) in psys2.particles.iter().enumerate() {
+    for (j, p) in psys2.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * jacc0_12[j][k];
         }
@@ -62,7 +62,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let (acc0,) = psys.get_acc();
     let mut ftot0 = [0.0; 3];
-    for (i, p) in psys.particles.iter().enumerate() {
+    for (i, p) in psys.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
         }
@@ -74,7 +74,7 @@ fn main() -> Result<(), std::io::Error> {
     let (acc0, acc1) = psys.get_jrk();
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
-    for (i, p) in psys.particles.iter().enumerate() {
+    for (i, p) in psys.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -86,7 +86,7 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("_acc1: {:?}", &acc1[..2]);
     eprintln!("");
 
-    for (i, p) in psys.particles.iter_mut().enumerate() {
+    for (i, p) in psys.iter_mut().enumerate() {
         for k in 0..3 {
             p.acc0[k] = acc0[i][k];
         }
@@ -95,7 +95,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
-    for (i, p) in psys.particles.iter().enumerate() {
+    for (i, p) in psys.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -110,7 +110,7 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("_acc2: {:?}", &acc2[..2]);
     eprintln!("");
 
-    for (i, p) in psys.particles.iter_mut().enumerate() {
+    for (i, p) in psys.iter_mut().enumerate() {
         for k in 0..3 {
             p.acc0[k] = acc0[i][k];
             p.acc1[k] = acc1[i][k];
@@ -121,7 +121,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
     let mut ftot3 = [0.0; 3];
-    for (i, p) in psys.particles.iter().enumerate() {
+    for (i, p) in psys.iter().enumerate() {
         for k in 0..3 {
             ftot0[k] += p.mass * acc0[i][k];
             ftot1[k] += p.mass * acc1[i][k];
@@ -145,9 +145,10 @@ fn main() -> Result<(), std::io::Error> {
         // psys1.energies();
         // psys2.energies();
         let duration = timer.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = psys.len() as f64;
-        let ns_loop = elapsed as f64 / (n * n);
+        let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
+            + u128::from(duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let ns_loop = 1.0e9 * elapsed / (psys.len() as f64).powi(2);
         eprintln!("energies: {:?} {:.5?}", duration, ns_loop);
     }
 
@@ -158,9 +159,10 @@ fn main() -> Result<(), std::io::Error> {
         // psys2.get_acc();
         // psys1.get_acc_p2p(&psys2);
         let duration = timer.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = psys.len() as f64;
-        let ns_loop = elapsed as f64 / (n * n);
+        let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
+            + u128::from(duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let ns_loop = 1.0e9 * elapsed / (psys.len() as f64).powi(2);
         eprintln!("acc0: {:?} {:.5?}", duration, ns_loop);
     }
 
@@ -171,9 +173,10 @@ fn main() -> Result<(), std::io::Error> {
         // psys2.get_jrk();
         // psys1.get_jrk_p2p(&psys2);
         let duration = timer.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = psys.len() as f64;
-        let ns_loop = elapsed as f64 / (n * n);
+        let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
+            + u128::from(duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let ns_loop = 1.0e9 * elapsed / (psys.len() as f64).powi(2);
         eprintln!("acc1: {:?} {:.5?}", duration, ns_loop);
     }
 
@@ -184,9 +187,10 @@ fn main() -> Result<(), std::io::Error> {
         // psys2.get_snp();
         // psys1.get_snp_p2p(&psys2);
         let duration = timer.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = psys.len() as f64;
-        let ns_loop = elapsed as f64 / (n * n);
+        let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
+            + u128::from(duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let ns_loop = 1.0e9 * elapsed / (psys.len() as f64).powi(2);
         eprintln!("acc2: {:?} {:.5?}", duration, ns_loop);
     }
 
@@ -197,9 +201,10 @@ fn main() -> Result<(), std::io::Error> {
         // psys2.get_crk();
         // psys1.get_crk_p2p(&psys2);
         let duration = timer.elapsed();
-        let elapsed = u64::from(duration.subsec_nanos()) + 1_000_000_000 * duration.as_secs();
-        let n = psys.len() as f64;
-        let ns_loop = elapsed as f64 / (n * n);
+        let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
+            + u128::from(duration.subsec_nanos())) as f64
+            * 1.0e-9;
+        let ns_loop = 1.0e9 * elapsed / (psys.len() as f64).powi(2);
         eprintln!("acc3: {:?} {:.5?}", duration, ns_loop);
     }
 

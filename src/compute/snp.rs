@@ -40,18 +40,18 @@ struct SnpDst {
 
 impl<'a> ToSoA for SnpSrcSlice<'a> {
     type SrcTypeSoA = SnpSrcSoA;
-    fn to_soa(&self, p_src: &mut [Self::SrcTypeSoA]) {
+    fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
         let n = self.len();
-        let n_tiles = p_src.len();
-        for jj in 0..n_tiles {
+        let mut jj = 0;
+        for p_src in ps_src.iter_mut() {
             for j in 0..TILE {
-                let jjj = TILE * jj + j;
-                if jjj < n {
-                    p_src[jj].eps[j] = self.eps[jjj];
-                    p_src[jj].mass[j] = self.mass[jjj];
-                    loop1(3, |k| p_src[jj].rdot0[k][j] = self.rdot0[jjj][k]);
-                    loop1(3, |k| p_src[jj].rdot1[k][j] = self.rdot1[jjj][k]);
-                    loop1(3, |k| p_src[jj].rdot2[k][j] = self.rdot2[jjj][k]);
+                if jj < n {
+                    p_src.eps[j] = self.eps[jj];
+                    p_src.mass[j] = self.mass[jj];
+                    loop1(3, |k| p_src.rdot0[k][j] = self.rdot0[jj][k]);
+                    loop1(3, |k| p_src.rdot1[k][j] = self.rdot1[jj][k]);
+                    loop1(3, |k| p_src.rdot2[k][j] = self.rdot2[jj][k]);
+                    jj += 1;
                 }
             }
         }
@@ -61,17 +61,17 @@ impl<'a> ToSoA for SnpSrcSlice<'a> {
 impl<'a> FromSoA for SnpDstSliceMut<'a> {
     type SrcTypeSoA = SnpSrcSoA;
     type DstTypeSoA = SnpDstSoA;
-    fn from_soa(&mut self, p_src: &[Self::SrcTypeSoA], p_dst: &[Self::DstTypeSoA]) {
+    fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
         let n = self.len();
-        let n_tiles = p_src.len();
-        for jj in 0..n_tiles {
+        let mut jj = 0;
+        for (p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
             for j in 0..TILE {
-                let jjj = TILE * jj + j;
-                if jjj < n {
-                    let minv = 1.0 / p_src[jj].mass[j];
-                    loop1(3, |k| self.adot0[jjj][k] += p_dst[jj].adot0[k][j] * minv);
-                    loop1(3, |k| self.adot1[jjj][k] += p_dst[jj].adot1[k][j] * minv);
-                    loop1(3, |k| self.adot2[jjj][k] += p_dst[jj].adot2[k][j] * minv);
+                if jj < n {
+                    let minv = 1.0 / p_src.mass[j];
+                    loop1(3, |k| self.adot0[jj][k] += p_dst.adot0[k][j] * minv);
+                    loop1(3, |k| self.adot1[jj][k] += p_dst.adot1[k][j] * minv);
+                    loop1(3, |k| self.adot2[jj][k] += p_dst.adot2[k][j] * minv);
+                    jj += 1;
                 }
             }
         }

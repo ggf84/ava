@@ -63,10 +63,10 @@ impl Particle {
         );
         let id = hash(&state);
         Particle {
-            id: id,
-            mass: mass,
-            pos: pos,
-            vel: vel,
+            id,
+            mass,
+            pos,
+            vel,
             ..Default::default()
         }
     }
