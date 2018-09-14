@@ -18,13 +18,15 @@ lto = true
 codegen-units = 1
 
 [dependencies]
+bincode = "~1.0"
 rand = "~0.5"
 rayon = "~1.0"
 serde = "~1.0"
 serde_derive = "~1.0"
-bincode = "~1.0"
+soa_derive = "~0.7"
 
 [features]
 default = ["f64"]
 f32 = []    # enable single precision
 f64 = []    # enable double precision
+nightly-bench = []

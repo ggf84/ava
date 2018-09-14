@@ -1,21 +1,84 @@
-use super::{loop1, loop2, loop3, Kernel, TILE};
+use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
 use real::Real;
 use sys::particles::Particle;
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-pub struct AccData {
-    pub eps: [Real; TILE],
-    pub mass: [Real; TILE],
-    pub r0: [[Real; TILE]; 3],
-    pub a0: [[Real; TILE]; 3],
+struct AccSrcSoA {
+    eps: [Real; TILE],
+    mass: [Real; TILE],
+    rdot0: [[Real; TILE]; 3],
+}
+
+#[repr(align(16))]
+#[derive(Debug, Default, Copy, Clone)]
+struct AccDstSoA {
+    adot0: [[Real; TILE]; 3],
+}
+
+#[derive(Debug, Default, PartialEq, StructOfArray)]
+#[soa_derive = "Debug, PartialEq"]
+struct AccSrc {
+    eps: Real,
+    mass: Real,
+    rdot0: [Real; 3],
+}
+
+#[derive(Debug, Default, PartialEq, StructOfArray)]
+#[soa_derive = "Debug, PartialEq"]
+struct AccDst {
+    adot0: [Real; 3],
+}
+
+impl<'a> ToSoA for AccSrcSlice<'a> {
+    type SrcTypeSoA = AccSrcSoA;
+    fn to_soa(&self, p_src: &mut [Self::SrcTypeSoA]) {
+        let n = self.len();
+        let n_tiles = p_src.len();
+        for jj in 0..n_tiles {
+            for j in 0..TILE {
+                let jjj = TILE * jj + j;
+                if jjj < n {
+                    p_src[jj].eps[j] = self.eps[jjj];
+                    p_src[jj].mass[j] = self.mass[jjj];
+                    loop1(3, |k| p_src[jj].rdot0[k][j] = self.rdot0[jjj][k]);
+                }
+            }
+        }
+    }
+}
+
+impl<'a> FromSoA for AccDstSliceMut<'a> {
+    type SrcTypeSoA = AccSrcSoA;
+    type DstTypeSoA = AccDstSoA;
+    fn from_soa(&mut self, p_src: &[Self::SrcTypeSoA], p_dst: &[Self::DstTypeSoA]) {
+        let n = self.len();
+        let n_tiles = p_src.len();
+        for jj in 0..n_tiles {
+            for j in 0..TILE {
+                let jjj = TILE * jj + j;
+                if jjj < n {
+                    let minv = 1.0 / p_src[jj].mass[j];
+                    loop1(3, |k| self.adot0[jjj][k] += p_dst[jj].adot0[k][j] * minv);
+                }
+            }
+        }
+    }
 }
 
 pub struct Acc {}
-impl Acc {
+impl_kernel!(AccSrcSlice, AccDstSliceMut, AccSrcSoA, AccDstSoA, 64);
+
+impl Kernel for Acc {
     // flop count: 27
-    pub fn p2p(&self, ip: &mut AccData, jp: &mut AccData) {
-        let mut dr0: [[[Real; TILE]; TILE]; 3] = Default::default();
+    fn p2p(
+        &self,
+        ip_src: &AccSrcSoA,
+        ip_dst: &mut AccDstSoA,
+        jp_src: &AccSrcSoA,
+        jp_dst: &mut AccDstSoA,
+    ) {
+        let mut drdot0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut s00: [[Real; TILE]; TILE] = Default::default();
         let mut rinv1: [[Real; TILE]; TILE] = Default::default();
         let mut rinv2: [[Real; TILE]; TILE] = Default::default();
@@ -23,18 +86,18 @@ impl Acc {
         let mut mm_r3: [[Real; TILE]; TILE] = Default::default();
 
         loop3(3, TILE, TILE, |k, i, j| {
-            dr0[k][i][j] = ip.r0[k][j ^ i] - jp.r0[k][j];
+            drdot0[k][i][j] = ip_src.rdot0[k][j ^ i] - jp_src.rdot0[k][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            s00[i][j] = ip.eps[j ^ i] * jp.eps[j];
+            s00[i][j] = ip_src.eps[j ^ i] * jp_src.eps[j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            s00[i][j] += dr0[k][i][j] * dr0[k][i][j];
+            s00[i][j] += drdot0[k][i][j] * drdot0[k][i][j];
         });
 
         loop2(TILE, TILE, |i, j| {
-            mm[i][j] = ip.mass[j ^ i] * jp.mass[j];
+            mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
         });
         loop2(TILE, TILE, |i, j| {
             rinv2[i][j] = s00[i][j].recip();
@@ -47,107 +110,106 @@ impl Acc {
         });
 
         loop3(3, TILE, TILE, |k, i, j| {
-            ip.a0[k][j ^ i] -= mm_r3[i][j] * dr0[k][i][j];
+            ip_dst.adot0[k][j ^ i] -= mm_r3[i][j] * drdot0[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
-            jp.a0[k][j] += mm_r3[i][j] * dr0[k][i][j];
+            jp_dst.adot0[k][j] += mm_r3[i][j] * drdot0[k][i][j];
         });
     }
 }
 
-impl Kernel for Acc {
-    type SrcType = [Particle];
-    type DstType = [([Real; 3],)];
+pub fn triangle(psys: &[Particle]) -> (Vec<[Real; 3]>,) {
+    let mut src = AccSrcVec::with_capacity(psys.len());
+    let mut dst = AccDstVec::with_capacity(psys.len());
+    for p in psys.iter() {
+        src.push(AccSrc {
+            eps: p.eps,
+            mass: p.mass,
+            rdot0: p.pos,
+        });
+        dst.push(Default::default());
+    }
 
-    const NTILES: usize = 64 / TILE;
+    Acc {}.triangle(&src.as_slice(), &mut dst.as_mut_slice());
 
-    fn kernel(
-        &self,
-        isrc: &Self::SrcType,
-        jsrc: &Self::SrcType,
-        idst: &mut Self::DstType,
-        jdst: &mut Self::DstType,
-    ) {
-        let ni = isrc.len();
-        let nj = jsrc.len();
-        let ni_tiles = (ni + TILE - 1) / TILE;
-        let nj_tiles = (nj + TILE - 1) / TILE;
+    (dst.adot0,)
+}
 
-        let mut idata: [AccData; Self::NTILES] = [Default::default(); Self::NTILES];
-        for ii in 0..ni_tiles {
-            for i in 0..TILE {
-                if (TILE * ii + i) < ni {
-                    let ip = &isrc[TILE * ii + i];
-                    idata[ii].eps[i] = ip.eps;
-                    idata[ii].mass[i] = ip.mass;
-                    loop1(3, |k| idata[ii].r0[k][i] = ip.pos[k]);
-                }
-            }
-        }
-        let mut jdata: [AccData; Self::NTILES] = [Default::default(); Self::NTILES];
-        for jj in 0..nj_tiles {
-            for j in 0..TILE {
-                if (TILE * jj + j) < nj {
-                    let jp = &jsrc[TILE * jj + j];
-                    jdata[jj].eps[j] = jp.eps;
-                    jdata[jj].mass[j] = jp.mass;
-                    loop1(3, |k| jdata[jj].r0[k][j] = jp.pos[k]);
-                }
-            }
-        }
+pub fn rectangle(ipsys: &[Particle], jpsys: &[Particle]) -> ((Vec<[Real; 3]>,), (Vec<[Real; 3]>,)) {
+    let mut isrc = AccSrcVec::with_capacity(ipsys.len());
+    let mut idst = AccDstVec::with_capacity(ipsys.len());
+    for p in ipsys.iter() {
+        isrc.push(AccSrc {
+            eps: p.eps,
+            mass: p.mass,
+            rdot0: p.pos,
+        });
+        idst.push(Default::default());
+    }
 
-        for ii in 0..ni_tiles {
-            for jj in 0..nj_tiles {
-                self.p2p(&mut idata[ii], &mut jdata[jj]);
-            }
-        }
+    let mut jsrc = AccSrcVec::with_capacity(jpsys.len());
+    let mut jdst = AccDstVec::with_capacity(jpsys.len());
+    for p in jpsys.iter() {
+        jsrc.push(AccSrc {
+            eps: p.eps,
+            mass: p.mass,
+            rdot0: p.pos,
+        });
+        jdst.push(Default::default());
+    }
 
-        for jj in 0..nj_tiles {
-            for j in 0..TILE {
-                if (TILE * jj + j) < nj {
-                    let minv = 1.0 / jdata[jj].mass[j];
-                    let jacc = &mut jdst[TILE * jj + j];
-                    loop1(3, |k| jacc.0[k] += jdata[jj].a0[k][j] * minv);
-                }
-            }
-        }
-        for ii in 0..ni_tiles {
-            for i in 0..TILE {
-                if (TILE * ii + i) < ni {
-                    let minv = 1.0 / idata[ii].mass[i];
-                    let iacc = &mut idst[TILE * ii + i];
-                    loop1(3, |k| iacc.0[k] += idata[ii].a0[k][i] * minv);
-                }
+    Acc {}.rectangle(
+        &isrc.as_slice(),
+        &mut idst.as_mut_slice(),
+        &jsrc.as_slice(),
+        &mut jdst.as_mut_slice(),
+    );
+
+    ((idst.adot0,), (jdst.adot0,))
+}
+
+#[cfg(all(feature = "nightly-bench", test))]
+mod bench {
+    extern crate test;
+
+    use self::test::Bencher;
+    use super::*;
+    use rand::{
+        distributions::{Distribution, Standard},
+        Rng, SeedableRng, StdRng,
+    };
+
+    const NTILES: usize = 256 / TILE;
+
+    impl Distribution<AccSrcSoA> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccSrcSoA {
+            AccSrcSoA {
+                eps: rng.gen(),
+                mass: rng.gen(),
+                rdot0: rng.gen(),
             }
         }
     }
-}
 
-pub fn triangle(src: &[Particle]) -> (Vec<[Real; 3]>,) {
-    let mut dst = vec![([0.0; 3],); src.len()];
-    Acc {}.triangle(&src[..], &mut dst[..]);
-
-    let mut acc = (Vec::new(),);
-    dst.iter().for_each(|a| {
-        acc.0.push(a.0);
-    });
-    acc
-}
-
-pub fn rectangle(isrc: &[Particle], jsrc: &[Particle]) -> ((Vec<[Real; 3]>,), (Vec<[Real; 3]>,)) {
-    let mut idst = vec![([0.0; 3],); isrc.len()];
-    let mut jdst = vec![([0.0; 3],); jsrc.len()];
-    Acc {}.rectangle(&isrc[..], &jsrc[..], &mut idst[..], &mut jdst[..]);
-
-    let mut iacc = (Vec::new(),);
-    let mut jacc = (Vec::new(),);
-    idst.iter().for_each(|ia| {
-        iacc.0.push(ia.0);
-    });
-    jdst.iter().for_each(|ja| {
-        jacc.0.push(ja.0);
-    });
-    (iacc, jacc)
+    #[bench]
+    fn p2p(b: &mut Bencher) {
+        let kernel = Acc {};
+        let mut rng = StdRng::from_seed([0; 32]);
+        b.iter(|| {
+            let mut ip_src: [AccSrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_dst: [AccDstSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_src: [AccSrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_dst: [AccDstSoA; NTILES] = [Default::default(); NTILES];
+            ip_src.iter_mut().for_each(|p| *p = rng.gen());
+            jp_src.iter_mut().for_each(|p| *p = rng.gen());
+            for ii in 0..NTILES {
+                for jj in 0..NTILES {
+                    kernel.p2p(&ip_src[ii], &mut ip_dst[ii], &jp_src[jj], &mut jp_dst[jj]);
+                }
+            }
+            (ip_dst, jp_dst)
+        });
+    }
 }
 
 // -- end of file --

@@ -1,4 +1,5 @@
-#![feature(test)]
+#![cfg_attr(feature = "nightly-bench", feature(test))]
+#![cfg(all(feature = "nightly-bench", test))]
 
 extern crate ava;
 extern crate rand;
@@ -6,6 +7,7 @@ extern crate test;
 
 use rand::{Rng, SeedableRng, StdRng};
 use std::mem::size_of;
+use test::Bencher;
 
 use ava::real::Real;
 use ava::sys::particles::Particle;
@@ -37,35 +39,7 @@ fn init_particle_system(seed: u8, npart: usize) -> ParticleSystem {
 #[cfg(test)]
 mod energy {
     use super::*;
-    use ava::compute::energy::{self, Energy, EnergyData};
-    use test::Bencher;
-
-    fn init_energy_data(seed: u8) -> [EnergyData; NTILES] {
-        let mut data: [EnergyData; NTILES] = [Default::default(); NTILES];
-        let mut rng = StdRng::from_seed([seed; 32]);
-        for p in data.iter_mut() {
-            p.eps = rng.gen();
-            p.mass = rng.gen();
-            p.r0 = rng.gen();
-            p.r1 = rng.gen();
-        }
-        data
-    }
-
-    #[bench]
-    fn p2p(b: &mut Bencher) {
-        let kernel = Energy {};
-        let mut idata = init_energy_data(0);
-        let mut jdata = init_energy_data(1);
-        b.iter(|| {
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&mut idata[ii], &mut jdata[jj]);
-                }
-            }
-        });
-        println!("{:?}", (&idata[..], &jdata[..]));
-    }
+    use ava::compute::energy;
 
     #[bench]
     fn triangle(b: &mut Bencher) {
@@ -84,34 +58,7 @@ mod energy {
 #[cfg(test)]
 mod acc {
     use super::*;
-    use ava::compute::acc::{self, Acc, AccData};
-    use test::Bencher;
-
-    fn init_acc_data(seed: u8) -> [AccData; NTILES] {
-        let mut data: [AccData; NTILES] = [Default::default(); NTILES];
-        let mut rng = StdRng::from_seed([seed; 32]);
-        for p in data.iter_mut() {
-            p.eps = rng.gen();
-            p.mass = rng.gen();
-            p.r0 = rng.gen();
-        }
-        data
-    }
-
-    #[bench]
-    fn p2p(b: &mut Bencher) {
-        let kernel = Acc {};
-        let mut idata = init_acc_data(0);
-        let mut jdata = init_acc_data(1);
-        b.iter(|| {
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&mut idata[ii], &mut jdata[jj]);
-                }
-            }
-        });
-        println!("{:?}", (&idata[..], &jdata[..]));
-    }
+    use ava::compute::acc;
 
     #[bench]
     fn triangle(b: &mut Bencher) {
@@ -130,35 +77,7 @@ mod acc {
 #[cfg(test)]
 mod jrk {
     use super::*;
-    use ava::compute::jrk::{self, Jrk, JrkData};
-    use test::Bencher;
-
-    fn init_jrk_data(seed: u8) -> [JrkData; NTILES] {
-        let mut data: [JrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng = StdRng::from_seed([seed; 32]);
-        for p in data.iter_mut() {
-            p.eps = rng.gen();
-            p.mass = rng.gen();
-            p.r0 = rng.gen();
-            p.r1 = rng.gen();
-        }
-        data
-    }
-
-    #[bench]
-    fn p2p(b: &mut Bencher) {
-        let kernel = Jrk {};
-        let mut idata = init_jrk_data(0);
-        let mut jdata = init_jrk_data(1);
-        b.iter(|| {
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&mut idata[ii], &mut jdata[jj]);
-                }
-            }
-        });
-        println!("{:?}", (&idata[..], &jdata[..]));
-    }
+    use ava::compute::jrk;
 
     #[bench]
     fn triangle(b: &mut Bencher) {
@@ -177,36 +96,7 @@ mod jrk {
 #[cfg(test)]
 mod snp {
     use super::*;
-    use ava::compute::snp::{self, Snp, SnpData};
-    use test::Bencher;
-
-    fn init_snp_data(seed: u8) -> [SnpData; NTILES] {
-        let mut data: [SnpData; NTILES] = [Default::default(); NTILES];
-        let mut rng = StdRng::from_seed([seed; 32]);
-        for p in data.iter_mut() {
-            p.eps = rng.gen();
-            p.mass = rng.gen();
-            p.r0 = rng.gen();
-            p.r1 = rng.gen();
-            p.r2 = rng.gen();
-        }
-        data
-    }
-
-    #[bench]
-    fn p2p(b: &mut Bencher) {
-        let kernel = Snp {};
-        let mut idata = init_snp_data(0);
-        let mut jdata = init_snp_data(1);
-        b.iter(|| {
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&mut idata[ii], &mut jdata[jj]);
-                }
-            }
-        });
-        println!("{:?}", (&idata[..], &jdata[..]));
-    }
+    use ava::compute::snp;
 
     #[bench]
     fn triangle(b: &mut Bencher) {
@@ -225,37 +115,7 @@ mod snp {
 #[cfg(test)]
 mod crk {
     use super::*;
-    use ava::compute::crk::{self, Crk, CrkData};
-    use test::Bencher;
-
-    fn init_crk_data(seed: u8) -> [CrkData; NTILES] {
-        let mut data: [CrkData; NTILES] = [Default::default(); NTILES];
-        let mut rng = StdRng::from_seed([seed; 32]);
-        for p in data.iter_mut() {
-            p.eps = rng.gen();
-            p.mass = rng.gen();
-            p.r0 = rng.gen();
-            p.r1 = rng.gen();
-            p.r2 = rng.gen();
-            p.r3 = rng.gen();
-        }
-        data
-    }
-
-    #[bench]
-    fn p2p(b: &mut Bencher) {
-        let kernel = Crk {};
-        let mut idata = init_crk_data(0);
-        let mut jdata = init_crk_data(1);
-        b.iter(|| {
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&mut idata[ii], &mut jdata[jj]);
-                }
-            }
-        });
-        println!("{:?}", (&idata[..], &jdata[..]));
-    }
+    use ava::compute::crk;
 
     #[bench]
     fn triangle(b: &mut Bencher) {
