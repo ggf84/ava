@@ -2,18 +2,21 @@
 name = "ava"
 version = "0.0.3"
 authors = ["Guilherme G. Ferrari <gg.ferrari@gmail.com>"]
-description = "N-body experiments in Rust"
-homepage = "https://crates.io/crates/ava"
+description = "A Rust toolkit for gravitational N-body simulations"
+#homepage = "https://github.com/ggf84/ava"
+repository = "https://github.com/ggf84/ava"
 documentation = "https://docs.rs/ava"
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/ggf84/ava"
+categories = ["science"]
 
 [profile.bench]
+opt-level = 3
 lto = true
 codegen-units = 1
 
 [profile.release]
+opt-level = 3
 lto = true
 codegen-units = 1
 
