@@ -1,8 +1,8 @@
+use crate::real::{consts, Real};
 use rand::{
     distributions::{Distribution, Normal, Uniform},
     Rng,
 };
-use real::{consts, Real};
 
 trait SDP {
     const R_SCALE_FACTOR: Real;

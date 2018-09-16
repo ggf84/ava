@@ -1,6 +1,6 @@
 use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
-use real::Real;
-use sys::particles::Particle;
+use crate::{real::Real, sys::particles::Particle};
+use soa_derive::StructOfArray;
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
@@ -216,14 +216,12 @@ pub fn rectangle(
 
 #[cfg(all(feature = "nightly-bench", test))]
 mod bench {
-    extern crate test;
-
-    use self::test::Bencher;
     use super::*;
     use rand::{
         distributions::{Distribution, Standard},
         Rng, SeedableRng, StdRng,
     };
+    use test::Bencher;
 
     const NTILES: usize = 256 / TILE;
 

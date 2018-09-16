@@ -1,7 +1,6 @@
-use compute;
-use real::Real;
+use crate::{compute, real::Real, sys::particles::Particle};
+use serde_derive::{Deserialize, Serialize};
 use std::slice::{Iter, IterMut};
-use sys::particles::Particle;
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParticleSystem {
@@ -18,10 +17,10 @@ impl ParticleSystem {
     pub fn is_empty(&self) -> bool {
         self.particles.is_empty()
     }
-    pub fn iter(&self) -> Iter<Particle> {
+    pub fn iter(&self) -> Iter<'_, Particle> {
         self.particles.iter()
     }
-    pub fn iter_mut(&mut self) -> IterMut<Particle> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, Particle> {
         self.particles.iter_mut()
     }
     pub fn sort_by_dt(&mut self, n: usize) {

@@ -1,14 +1,5 @@
 #![cfg_attr(feature = "nightly-bench", feature(test))]
 
-extern crate bincode;
-extern crate rand;
-extern crate rayon;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate soa_derive;
-
 pub mod compute;
 pub mod ics;
 pub mod sim;

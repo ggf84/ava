@@ -1,10 +1,11 @@
-use rand::{distributions::Distribution, Rng};
-use real::Real;
-use sys::particles::Particle;
-use sys::system::ParticleSystem;
-
 pub mod imf;
 pub mod sdp;
+
+use crate::{
+    real::Real,
+    sys::{particles::Particle, system::ParticleSystem},
+};
+use rand::{distributions::Distribution, Rng};
 
 pub struct Model<IMF, SDP> {
     npart: usize,

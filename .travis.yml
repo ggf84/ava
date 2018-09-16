@@ -3,14 +3,14 @@ language: rust
 cache: cargo
 
 rust:
-  - stable
-  - beta
+#  - stable
+#  - beta
   - nightly
 
-matrix:
-  allow_failures:
-    - rust: nightly
-  fast_finish: true
+#matrix:
+#  allow_failures:
+#    - rust: nightly
+#  fast_finish: true
 
 env:
   - FP_MODE=f32

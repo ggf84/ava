@@ -1,8 +1,8 @@
+use crate::real::Real;
 use rand::{
     distributions::{Distribution, Uniform},
     Rng,
 };
-use real::Real;
 
 /// Equal mass initial-mass-function
 pub struct EqualMass {

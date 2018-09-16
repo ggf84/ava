@@ -1,14 +1,14 @@
-mod hermite;
-
-use bincode;
-use std::fs::File;
-use std::io::BufWriter;
-use std::ops::{Add, AddAssign};
-use std::time::{Duration, Instant};
+pub mod hermite;
 
 pub use self::hermite::{Hermite4, Hermite6, Hermite8};
-use real::Real;
-use sys::system::ParticleSystem;
+use crate::{real::Real, sys::system::ParticleSystem};
+use serde_derive::{Deserialize, Serialize};
+use std::{
+    fs::File,
+    io::BufWriter,
+    ops::{Add, AddAssign},
+    time::{Duration, Instant},
+};
 
 fn to_power_of_two(dt: Real) -> Real {
     let pow = dt.log2().floor();

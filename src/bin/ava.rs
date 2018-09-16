@@ -1,15 +1,14 @@
-extern crate ava;
-extern crate bincode;
-extern crate rand;
-
+use ava::ics::{
+    imf::{EqualMass, Maschberger2013},
+    sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},
+    Model,
+};
 use rand::{SeedableRng, StdRng};
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
-use std::time::Instant;
-
-use ava::ics::imf::{EqualMass, Maschberger2013};
-use ava::ics::sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer};
-use ava::ics::Model;
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter, Write},
+    time::Instant,
+};
 
 fn main() -> Result<(), std::io::Error> {
     let seed = [0; 32];

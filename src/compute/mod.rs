@@ -1,4 +1,4 @@
-use real::Real;
+use crate::real::Real;
 use std::mem::size_of;
 
 const TILE: usize = 16 / size_of::<Real>();
@@ -18,8 +18,6 @@ macro_rules! impl_kernel {
     (
         $scr_type:ident, $dst_type:ident, $scr_type_soa:ident, $dst_type_soa:ident, $threshold:expr $(,)*
     ) => {
-        use rayon;
-
         /// Kernel trait for triangle/rectangle parallel computations.
         trait Kernel: Sync {
             /// Implements mutual interaction
@@ -34,10 +32,10 @@ macro_rules! impl_kernel {
             /// Sequential kernel
             fn kernel(
                 &self,
-                isrc: &$scr_type,
-                idst: &mut $dst_type,
-                jsrc: &$scr_type,
-                jdst: &mut $dst_type,
+                isrc: &$scr_type<'_>,
+                idst: &mut $dst_type<'_>,
+                jsrc: &$scr_type<'_>,
+                jdst: &mut $dst_type<'_>,
             ) {
                 const NTILES: usize = $threshold / TILE;
                 let mut ip_src: [$scr_type_soa; NTILES] = [Default::default(); NTILES];
@@ -61,7 +59,7 @@ macro_rules! impl_kernel {
             }
 
             /// Parallel triangle kernel
-            fn triangle(&self, src: &$scr_type, dst: &mut $dst_type) {
+            fn triangle(&self, src: &$scr_type<'_>, dst: &mut $dst_type<'_>) {
                 let len = src.len();
                 if len > 1 {
                     let mid = len / 2;
@@ -81,10 +79,10 @@ macro_rules! impl_kernel {
             /// Parallel rectangle kernel
             fn rectangle(
                 &self,
-                isrc: &$scr_type,
-                idst: &mut $dst_type,
-                jsrc: &$scr_type,
-                jdst: &mut $dst_type,
+                isrc: &$scr_type<'_>,
+                idst: &mut $dst_type<'_>,
+                jsrc: &$scr_type<'_>,
+                jdst: &mut $dst_type<'_>,
             ) {
                 let ilen = isrc.len();
                 let jlen = jsrc.len();

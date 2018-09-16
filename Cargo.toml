@@ -9,6 +9,7 @@ documentation = "https://docs.rs/ava"
 readme = "README.md"
 license = "MIT"
 categories = ["science"]
+edition = "2018"
 
 [profile.bench]
 opt-level = 3
