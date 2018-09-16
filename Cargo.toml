@@ -33,4 +33,4 @@ soa_derive = "~0.7"
 default = ["f64"]
 f32 = []    # enable single precision
 f64 = []    # enable double precision
-nightly-bench = []
+nightly = []

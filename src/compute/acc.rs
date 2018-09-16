@@ -168,7 +168,7 @@ pub fn rectangle(ipsys: &[Particle], jpsys: &[Particle]) -> ((Vec<[Real; 3]>,), 
     ((idst.adot0,), (jdst.adot0,))
 }
 
-#[cfg(all(feature = "nightly-bench", test))]
+#[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
     use rand::{

@@ -1,6 +1,6 @@
-#![cfg_attr(feature = "nightly-bench", feature(test))]
+#![cfg_attr(feature = "nightly", feature(test))]
 
-#[cfg(all(feature = "nightly-bench", test))]
+#[cfg(all(feature = "nightly", test))]
 mod bench {
     use ava::{
         compute,

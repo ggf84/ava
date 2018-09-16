@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "nightly-bench", feature(test))]
+#![cfg_attr(feature = "nightly", feature(test))]
 
 pub mod compute;
 pub mod ics;

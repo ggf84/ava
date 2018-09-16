@@ -209,7 +209,7 @@ pub fn rectangle(
     ((idst.ekin, idst.epot), (jdst.ekin, jdst.epot))
 }
 
-#[cfg(all(feature = "nightly-bench", test))]
+#[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
     use rand::{

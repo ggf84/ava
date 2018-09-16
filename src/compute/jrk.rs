@@ -214,7 +214,7 @@ pub fn rectangle(
     ((idst.adot0, idst.adot1), (jdst.adot0, jdst.adot1))
 }
 
-#[cfg(all(feature = "nightly-bench", test))]
+#[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
     use rand::{

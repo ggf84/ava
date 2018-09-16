@@ -359,7 +359,7 @@ pub fn rectangle(
     )
 }
 
-#[cfg(all(feature = "nightly-bench", test))]
+#[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
     use rand::{
