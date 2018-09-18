@@ -1,7 +1,10 @@
-use ava::ics::{
-    imf::{EqualMass, Maschberger2013},
-    sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},
-    Model,
+use ava::{
+    gravity::{Acc0, Acc1, Acc2, Acc3, Energy},
+    ics::{
+        imf::{EqualMass, Maschberger2013},
+        sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},
+        Model,
+    },
 };
 use rand::{SeedableRng, StdRng};
 use std::{
@@ -37,8 +40,8 @@ fn main() -> Result<(), std::io::Error> {
 
     let psys1 = Model::new(7 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
     let psys2 = Model::new(3 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
-    let ((iacc0_21,), (jacc0_21,)) = psys2.get_acc_p2p(&psys1);
-    let ((iacc0_12,), (jacc0_12,)) = psys1.get_acc_p2p(&psys2);
+    let ((iacc0_21,), (jacc0_21,)) = Acc0 {}.compute_mutual(psys2.as_slice(), psys1.as_slice());
+    let ((iacc0_12,), (jacc0_12,)) = Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
     assert!(iacc0_21 == jacc0_12);
     assert!(iacc0_12 == jacc0_21);
     let mut ftot0 = [0.0; 3];
@@ -59,7 +62,7 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("iacc0_21: {:?}", &iacc0_21[..2]);
     eprintln!("");
 
-    let (acc0,) = psys.get_acc();
+    let (acc0,) = Acc0 {}.compute(psys.as_slice());
     let mut ftot0 = [0.0; 3];
     for (i, p) in psys.iter().enumerate() {
         for k in 0..3 {
@@ -70,7 +73,7 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("_acc0: {:?}", &acc0[..2]);
     eprintln!("");
 
-    let (acc0, acc1) = psys.get_jrk();
+    let (acc0, acc1) = Acc1 {}.compute(psys.as_slice());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     for (i, p) in psys.iter().enumerate() {
@@ -90,7 +93,7 @@ fn main() -> Result<(), std::io::Error> {
             p.acc0[k] = acc0[i][k];
         }
     }
-    let (acc0, acc1, acc2) = psys.get_snp();
+    let (acc0, acc1, acc2) = Acc2 {}.compute(psys.as_slice());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
@@ -115,7 +118,7 @@ fn main() -> Result<(), std::io::Error> {
             p.acc1[k] = acc1[i][k];
         }
     }
-    let (acc0, acc1, acc2, acc3) = psys.get_crk();
+    let (acc0, acc1, acc2, acc3) = Acc3 {}.compute(psys.as_slice());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
@@ -138,11 +141,51 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("_acc3: {:?}", &acc3[..2]);
     eprintln!("");
 
+    // TODO: put this somewhere as a test.
+    {
+        use ava::sys::ParticleSystem;
+        let n = psys.len();
+        let mut psys_1 = ParticleSystem::new();
+        let mut psys_2 = ParticleSystem::new();
+        psys_1.particles = psys.particles[..(n / 3)].to_vec();
+        psys_2.particles = psys.particles[(n / 3)..].to_vec();
+
+        let (mtot_1, _rcom_1, vcom_1) = psys_1.com_mass_pos_vel();
+        let vcom_1 = vcom_1.iter().fold(0.0, |s, v| s + v * v).sqrt();
+        let kecom_1 = 0.5 * mtot_1 * vcom_1.powi(2);
+        println!("{:?} {:?}", mtot_1, kecom_1);
+
+        let (mtot_2, _rcom_2, vcom_2) = psys_2.com_mass_pos_vel();
+        let vcom_2 = vcom_2.iter().fold(0.0, |s, v| s + v * v).sqrt();
+        let kecom_2 = 0.5 * mtot_2 * vcom_2.powi(2);
+        println!("{:?} {:?}", mtot_2, kecom_2);
+
+        let mtot = psys.com_mass();
+        // let mtot = mtot_1 + mtot_2;
+        let kecom = kecom_1 + kecom_2;
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
+        let (ke_1, pe_1) = Energy::new(mtot_1).energies(psys_1.as_slice());
+        let (ke_2, pe_2) = Energy::new(mtot_2).energies(psys_2.as_slice());
+        let (ke_12, pe_12) =
+            Energy::new(mtot).energies_mutual(psys_1.as_slice(), psys_2.as_slice());
+        println!("{:?} {:?}", ke, pe);
+        println!("{:?} {:?}", ke_1, pe_1);
+        println!("{:?} {:?}", ke_2, pe_2);
+        println!("{:?} {:?}", ke_12, pe_12);
+        println!("{:?} {:?}", ke_1 + ke_2 + kecom, pe_12 + (pe_1 + pe_2));
+        println!(
+            "{:?} {:?}",
+            ke_12 + (mtot_1 * ke_1 + mtot_2 * ke_2) / mtot,
+            pe_12 + (pe_1 + pe_2)
+        );
+    }
+
     for _ in 0..1 {
         let timer = Instant::now();
-        psys.energies();
-        // psys1.energies();
-        // psys2.energies();
+        // Pass mtot=1 because here we are not interested in the actual result.
+        Energy::new(1.0).compute(psys.as_slice());
+        // Energy::new(1.0).compute(psys1.as_slice());
+        // Energy::new(1.0).compute(psys2.as_slice());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -153,10 +196,10 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        psys.get_acc();
-        // psys1.get_acc();
-        // psys2.get_acc();
-        // psys1.get_acc_p2p(&psys2);
+        Acc0 {}.compute(psys.as_slice());
+        // Acc0 {}.compute(psys1.as_slice());
+        // Acc0 {}.compute(psys2.as_slice());
+        // Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -167,10 +210,10 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        psys.get_jrk();
-        // psys1.get_jrk();
-        // psys2.get_jrk();
-        // psys1.get_jrk_p2p(&psys2);
+        Acc1 {}.compute(psys.as_slice());
+        // Acc1 {}.compute(psys1.as_slice());
+        // Acc1 {}.compute(psys2.as_slice());
+        // Acc1 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -181,10 +224,10 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        psys.get_snp();
-        // psys1.get_snp();
-        // psys2.get_snp();
-        // psys1.get_snp_p2p(&psys2);
+        Acc2 {}.compute(psys.as_slice());
+        // Acc2 {}.compute(psys1.as_slice());
+        // Acc2 {}.compute(psys2.as_slice());
+        // Acc2 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -195,10 +238,10 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        psys.get_crk();
-        // psys1.get_crk();
-        // psys2.get_crk();
-        // psys1.get_crk_p2p(&psys2);
+        Acc3 {}.compute(psys.as_slice());
+        // Acc3 {}.compute(psys1.as_slice());
+        // Acc3 {}.compute(psys2.as_slice());
+        // Acc3 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64

@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
-pub mod compute;
+pub mod gravity;
 pub mod ics;
 pub mod sim;
 pub mod sys;

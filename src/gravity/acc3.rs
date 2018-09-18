@@ -1,10 +1,10 @@
 use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
-use crate::{real::Real, sys::particles::Particle};
+use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct CrkSrcSoA {
+struct Acc3SrcSoA {
     eps: [Real; TILE],
     mass: [Real; TILE],
     rdot0: [[Real; TILE]; 3],
@@ -15,7 +15,7 @@ struct CrkSrcSoA {
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct CrkDstSoA {
+struct Acc3DstSoA {
     adot0: [[Real; TILE]; 3],
     adot1: [[Real; TILE]; 3],
     adot2: [[Real; TILE]; 3],
@@ -24,7 +24,7 @@ struct CrkDstSoA {
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct CrkSrc {
+struct Acc3Src {
     eps: Real,
     mass: Real,
     rdot0: [Real; 3],
@@ -35,15 +35,15 @@ struct CrkSrc {
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct CrkDst {
+struct Acc3Dst {
     adot0: [Real; 3],
     adot1: [Real; 3],
     adot2: [Real; 3],
     adot3: [Real; 3],
 }
 
-impl<'a> ToSoA for CrkSrcSlice<'a> {
-    type SrcTypeSoA = CrkSrcSoA;
+impl<'a> ToSoA for Acc3SrcSlice<'a> {
+    type SrcTypeSoA = Acc3SrcSoA;
     fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -63,9 +63,9 @@ impl<'a> ToSoA for CrkSrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA for CrkDstSliceMut<'a> {
-    type SrcTypeSoA = CrkSrcSoA;
-    type DstTypeSoA = CrkDstSoA;
+impl<'a> FromSoA for Acc3DstSliceMut<'a> {
+    type SrcTypeSoA = Acc3SrcSoA;
+    type DstTypeSoA = Acc3DstSoA;
     fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -84,17 +84,17 @@ impl<'a> FromSoA for CrkDstSliceMut<'a> {
     }
 }
 
-pub struct Crk {}
-impl_kernel!(CrkSrcSlice, CrkDstSliceMut, CrkSrcSoA, CrkDstSoA, 64);
+pub struct Acc3 {}
+impl_kernel!(Acc3SrcSlice, Acc3DstSliceMut, Acc3SrcSoA, Acc3DstSoA, 64);
 
-impl Kernel for Crk {
+impl Kernel for Acc3 {
     // flop count: 157
     fn p2p(
         &self,
-        ip_src: &CrkSrcSoA,
-        ip_dst: &mut CrkDstSoA,
-        jp_src: &CrkSrcSoA,
-        jp_dst: &mut CrkDstSoA,
+        ip_src: &Acc3SrcSoA,
+        ip_dst: &mut Acc3DstSoA,
+        jp_src: &Acc3SrcSoA,
+        jp_dst: &mut Acc3DstSoA,
     ) {
         const CQ21: Real = 5.0 / 3.0;
         const CQ31: Real = 8.0 / 3.0;
@@ -274,89 +274,94 @@ impl Kernel for Crk {
     }
 }
 
-pub fn triangle(
-    psys: &[Particle],
-) -> (
-    Vec<[Real; 3]>,
-    Vec<[Real; 3]>,
-    Vec<[Real; 3]>,
-    Vec<[Real; 3]>,
-) {
-    let mut src = CrkSrcVec::with_capacity(psys.len());
-    let mut dst = CrkDstVec::with_capacity(psys.len());
-    for p in psys.iter() {
-        src.push(CrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-            rdot2: p.acc0,
-            rdot3: p.acc1,
-        });
-        dst.push(Default::default());
+impl Acc3 {
+    /// For each particle of the system, compute the {0, 1, 2, 3}-derivative of the gravitational acceleration.
+    pub fn compute(
+        &self,
+        psys: &[Particle],
+    ) -> (
+        Vec<[Real; 3]>,
+        Vec<[Real; 3]>,
+        Vec<[Real; 3]>,
+        Vec<[Real; 3]>,
+    ) {
+        let mut src = Acc3SrcVec::with_capacity(psys.len());
+        let mut dst = Acc3DstVec::with_capacity(psys.len());
+        for p in psys.iter() {
+            src.push(Acc3Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+                rdot2: p.acc0,
+                rdot3: p.acc1,
+            });
+            dst.push(Default::default());
+        }
+
+        self.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+
+        (dst.adot0, dst.adot1, dst.adot2, dst.adot3)
     }
+    /// For each particle of two disjoint systems, compute the mutual {0, 1, 2, 3}-derivative of the gravitational acceleration.
+    pub fn compute_mutual(
+        &self,
+        ipsys: &[Particle],
+        jpsys: &[Particle],
+    ) -> (
+        (
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+        ),
+        (
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+            Vec<[Real; 3]>,
+        ),
+    ) {
+        let mut isrc = Acc3SrcVec::with_capacity(ipsys.len());
+        let mut idst = Acc3DstVec::with_capacity(ipsys.len());
+        for p in ipsys.iter() {
+            isrc.push(Acc3Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+                rdot2: p.acc0,
+                rdot3: p.acc1,
+            });
+            idst.push(Default::default());
+        }
 
-    Crk {}.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+        let mut jsrc = Acc3SrcVec::with_capacity(jpsys.len());
+        let mut jdst = Acc3DstVec::with_capacity(jpsys.len());
+        for p in jpsys.iter() {
+            jsrc.push(Acc3Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+                rdot2: p.acc0,
+                rdot3: p.acc1,
+            });
+            jdst.push(Default::default());
+        }
 
-    (dst.adot0, dst.adot1, dst.adot2, dst.adot3)
-}
+        self.rectangle(
+            &isrc.as_slice(),
+            &mut idst.as_mut_slice(),
+            &jsrc.as_slice(),
+            &mut jdst.as_mut_slice(),
+        );
 
-pub fn rectangle(
-    ipsys: &[Particle],
-    jpsys: &[Particle],
-) -> (
-    (
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-    ),
-    (
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-    ),
-) {
-    let mut isrc = CrkSrcVec::with_capacity(ipsys.len());
-    let mut idst = CrkDstVec::with_capacity(ipsys.len());
-    for p in ipsys.iter() {
-        isrc.push(CrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-            rdot2: p.acc0,
-            rdot3: p.acc1,
-        });
-        idst.push(Default::default());
+        (
+            (idst.adot0, idst.adot1, idst.adot2, idst.adot3),
+            (jdst.adot0, jdst.adot1, jdst.adot2, jdst.adot3),
+        )
     }
-
-    let mut jsrc = CrkSrcVec::with_capacity(jpsys.len());
-    let mut jdst = CrkDstVec::with_capacity(jpsys.len());
-    for p in jpsys.iter() {
-        jsrc.push(CrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-            rdot2: p.acc0,
-            rdot3: p.acc1,
-        });
-        jdst.push(Default::default());
-    }
-
-    Crk {}.rectangle(
-        &isrc.as_slice(),
-        &mut idst.as_mut_slice(),
-        &jsrc.as_slice(),
-        &mut jdst.as_mut_slice(),
-    );
-
-    (
-        (idst.adot0, idst.adot1, idst.adot2, idst.adot3),
-        (jdst.adot0, jdst.adot1, jdst.adot2, jdst.adot3),
-    )
 }
 
 #[cfg(all(feature = "nightly", test))]
@@ -370,9 +375,9 @@ mod bench {
 
     const NTILES: usize = 256 / TILE;
 
-    impl Distribution<CrkSrcSoA> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CrkSrcSoA {
-            CrkSrcSoA {
+    impl Distribution<Acc3SrcSoA> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Acc3SrcSoA {
+            Acc3SrcSoA {
                 eps: rng.gen(),
                 mass: rng.gen(),
                 rdot0: rng.gen(),
@@ -385,13 +390,13 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Crk {};
+        let kernel = Acc3 {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
-            let mut ip_src: [CrkSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut ip_dst: [CrkDstSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_src: [CrkSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_dst: [CrkDstSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_src: [Acc3SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_dst: [Acc3DstSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_src: [Acc3SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_dst: [Acc3DstSoA; NTILES] = [Default::default(); NTILES];
             ip_src.iter_mut().for_each(|p| *p = rng.gen());
             jp_src.iter_mut().for_each(|p| *p = rng.gen());
             for ii in 0..NTILES {

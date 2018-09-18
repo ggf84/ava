@@ -1,10 +1,10 @@
 use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
-use crate::{real::Real, sys::particles::Particle};
+use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct AccSrcSoA {
+struct Acc0SrcSoA {
     eps: [Real; TILE],
     mass: [Real; TILE],
     rdot0: [[Real; TILE]; 3],
@@ -12,13 +12,13 @@ struct AccSrcSoA {
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct AccDstSoA {
+struct Acc0DstSoA {
     adot0: [[Real; TILE]; 3],
 }
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct AccSrc {
+struct Acc0Src {
     eps: Real,
     mass: Real,
     rdot0: [Real; 3],
@@ -26,12 +26,12 @@ struct AccSrc {
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct AccDst {
+struct Acc0Dst {
     adot0: [Real; 3],
 }
 
-impl<'a> ToSoA for AccSrcSlice<'a> {
-    type SrcTypeSoA = AccSrcSoA;
+impl<'a> ToSoA for Acc0SrcSlice<'a> {
+    type SrcTypeSoA = Acc0SrcSoA;
     fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -48,9 +48,9 @@ impl<'a> ToSoA for AccSrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA for AccDstSliceMut<'a> {
-    type SrcTypeSoA = AccSrcSoA;
-    type DstTypeSoA = AccDstSoA;
+impl<'a> FromSoA for Acc0DstSliceMut<'a> {
+    type SrcTypeSoA = Acc0SrcSoA;
+    type DstTypeSoA = Acc0DstSoA;
     fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -66,17 +66,17 @@ impl<'a> FromSoA for AccDstSliceMut<'a> {
     }
 }
 
-pub struct Acc {}
-impl_kernel!(AccSrcSlice, AccDstSliceMut, AccSrcSoA, AccDstSoA, 64);
+pub struct Acc0 {}
+impl_kernel!(Acc0SrcSlice, Acc0DstSliceMut, Acc0SrcSoA, Acc0DstSoA, 64);
 
-impl Kernel for Acc {
+impl Kernel for Acc0 {
     // flop count: 27
     fn p2p(
         &self,
-        ip_src: &AccSrcSoA,
-        ip_dst: &mut AccDstSoA,
-        jp_src: &AccSrcSoA,
-        jp_dst: &mut AccDstSoA,
+        ip_src: &Acc0SrcSoA,
+        ip_dst: &mut Acc0DstSoA,
+        jp_src: &Acc0SrcSoA,
+        jp_dst: &mut Acc0DstSoA,
     ) {
         let mut drdot0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut s00: [[Real; TILE]; TILE] = Default::default();
@@ -118,54 +118,61 @@ impl Kernel for Acc {
     }
 }
 
-pub fn triangle(psys: &[Particle]) -> (Vec<[Real; 3]>,) {
-    let mut src = AccSrcVec::with_capacity(psys.len());
-    let mut dst = AccDstVec::with_capacity(psys.len());
-    for p in psys.iter() {
-        src.push(AccSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-        });
-        dst.push(Default::default());
+impl Acc0 {
+    /// For each particle of the system, compute the {0}-derivative of the gravitational acceleration.
+    pub fn compute(&self, psys: &[Particle]) -> (Vec<[Real; 3]>,) {
+        let mut src = Acc0SrcVec::with_capacity(psys.len());
+        let mut dst = Acc0DstVec::with_capacity(psys.len());
+        for p in psys.iter() {
+            src.push(Acc0Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+            });
+            dst.push(Default::default());
+        }
+
+        self.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+
+        (dst.adot0,)
     }
+    /// For each particle of two disjoint systems, compute the mutual {0}-derivative of the gravitational acceleration.
+    pub fn compute_mutual(
+        &self,
+        ipsys: &[Particle],
+        jpsys: &[Particle],
+    ) -> ((Vec<[Real; 3]>,), (Vec<[Real; 3]>,)) {
+        let mut isrc = Acc0SrcVec::with_capacity(ipsys.len());
+        let mut idst = Acc0DstVec::with_capacity(ipsys.len());
+        for p in ipsys.iter() {
+            isrc.push(Acc0Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+            });
+            idst.push(Default::default());
+        }
 
-    Acc {}.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+        let mut jsrc = Acc0SrcVec::with_capacity(jpsys.len());
+        let mut jdst = Acc0DstVec::with_capacity(jpsys.len());
+        for p in jpsys.iter() {
+            jsrc.push(Acc0Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+            });
+            jdst.push(Default::default());
+        }
 
-    (dst.adot0,)
-}
+        self.rectangle(
+            &isrc.as_slice(),
+            &mut idst.as_mut_slice(),
+            &jsrc.as_slice(),
+            &mut jdst.as_mut_slice(),
+        );
 
-pub fn rectangle(ipsys: &[Particle], jpsys: &[Particle]) -> ((Vec<[Real; 3]>,), (Vec<[Real; 3]>,)) {
-    let mut isrc = AccSrcVec::with_capacity(ipsys.len());
-    let mut idst = AccDstVec::with_capacity(ipsys.len());
-    for p in ipsys.iter() {
-        isrc.push(AccSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-        });
-        idst.push(Default::default());
+        ((idst.adot0,), (jdst.adot0,))
     }
-
-    let mut jsrc = AccSrcVec::with_capacity(jpsys.len());
-    let mut jdst = AccDstVec::with_capacity(jpsys.len());
-    for p in jpsys.iter() {
-        jsrc.push(AccSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-        });
-        jdst.push(Default::default());
-    }
-
-    Acc {}.rectangle(
-        &isrc.as_slice(),
-        &mut idst.as_mut_slice(),
-        &jsrc.as_slice(),
-        &mut jdst.as_mut_slice(),
-    );
-
-    ((idst.adot0,), (jdst.adot0,))
 }
 
 #[cfg(all(feature = "nightly", test))]
@@ -179,9 +186,9 @@ mod bench {
 
     const NTILES: usize = 256 / TILE;
 
-    impl Distribution<AccSrcSoA> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccSrcSoA {
-            AccSrcSoA {
+    impl Distribution<Acc0SrcSoA> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Acc0SrcSoA {
+            Acc0SrcSoA {
                 eps: rng.gen(),
                 mass: rng.gen(),
                 rdot0: rng.gen(),
@@ -191,13 +198,13 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Acc {};
+        let kernel = Acc0 {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
-            let mut ip_src: [AccSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut ip_dst: [AccDstSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_src: [AccSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_dst: [AccDstSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_src: [Acc0SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_dst: [Acc0DstSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_src: [Acc0SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_dst: [Acc0DstSoA; NTILES] = [Default::default(); NTILES];
             ip_src.iter_mut().for_each(|p| *p = rng.gen());
             jp_src.iter_mut().for_each(|p| *p = rng.gen());
             for ii in 0..NTILES {

@@ -1,4 +1,4 @@
-use crate::{compute, real::Real, sys::particles::Particle};
+use crate::{real::Real, sys::particles::Particle};
 use serde_derive::{Deserialize, Serialize};
 use std::slice::{Iter, IterMut};
 
@@ -23,6 +23,12 @@ impl ParticleSystem {
     pub fn iter_mut(&mut self) -> IterMut<'_, Particle> {
         self.particles.iter_mut()
     }
+    pub fn as_slice(&self) -> &[Particle] {
+        self.particles.as_slice()
+    }
+    pub fn as_mut_slice(&mut self) -> &mut [Particle] {
+        self.particles.as_mut_slice()
+    }
     pub fn sort_by_dt(&mut self, n: usize) {
         self.particles[..n].sort_unstable_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
     }
@@ -30,90 +36,6 @@ impl ParticleSystem {
         for p in self.iter_mut() {
             p.dt = dt;
         }
-    }
-}
-
-impl ParticleSystem {
-    /// Compute the kinetic and potential energies of the system.
-    pub fn energies(&self) -> (Real, Real) {
-        let (ke, pe) = compute::energy::triangle(&self.particles[..]);
-        let ke = 0.5 * ke.iter().sum::<Real>();
-        let pe = 0.5 * pe.iter().sum::<Real>();
-        let ke = 0.5 * ke / self.com_mass();
-        (ke, pe)
-    }
-}
-
-impl ParticleSystem {
-    /// Compute the gravitational acceleration's (0)-derivative for each particle in the system due to itself.
-    pub fn get_acc(&self) -> (Vec<[Real; 3]>,) {
-        compute::acc::triangle(&self.particles[..])
-    }
-    /// Compute the gravitational acceleration's (0)-derivative for each particle in the system due to 'other' system.
-    pub fn get_acc_p2p(&self, other: &Self) -> ((Vec<[Real; 3]>,), (Vec<[Real; 3]>,)) {
-        compute::acc::rectangle(&self.particles[..], &other.particles[..])
-    }
-
-    /// Compute the gravitational acceleration's (0, 1)-derivatives for each particle in the system due to itself.
-    pub fn get_jrk(&self) -> (Vec<[Real; 3]>, Vec<[Real; 3]>) {
-        compute::jrk::triangle(&self.particles[..])
-    }
-    /// Compute the gravitational acceleration's (0, 1)-derivatives for each particle in the system due to 'other' system.
-    pub fn get_jrk_p2p(
-        &self,
-        other: &Self,
-    ) -> (
-        (Vec<[Real; 3]>, Vec<[Real; 3]>),
-        (Vec<[Real; 3]>, Vec<[Real; 3]>),
-    ) {
-        compute::jrk::rectangle(&self.particles[..], &other.particles[..])
-    }
-
-    /// Compute the gravitational acceleration's (0, 1, 2)-derivatives for each particle in the system due to itself.
-    pub fn get_snp(&self) -> (Vec<[Real; 3]>, Vec<[Real; 3]>, Vec<[Real; 3]>) {
-        compute::snp::triangle(&self.particles[..])
-    }
-    /// Compute the gravitational acceleration's (0, 1, 2)-derivatives for each particle in the system due to 'other' system.
-    pub fn get_snp_p2p(
-        &self,
-        other: &Self,
-    ) -> (
-        (Vec<[Real; 3]>, Vec<[Real; 3]>, Vec<[Real; 3]>),
-        (Vec<[Real; 3]>, Vec<[Real; 3]>, Vec<[Real; 3]>),
-    ) {
-        compute::snp::rectangle(&self.particles[..], &other.particles[..])
-    }
-
-    /// Compute the gravitational acceleration's (0, 1, 2, 3)-derivatives for each particle in the system due to itself.
-    pub fn get_crk(
-        &self,
-    ) -> (
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-    ) {
-        compute::crk::triangle(&self.particles[..])
-    }
-    /// Compute the gravitational acceleration's (0, 1, 2, 3)-derivatives for each particle in the system due to 'other' system.
-    pub fn get_crk_p2p(
-        &self,
-        other: &Self,
-    ) -> (
-        (
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-        ),
-        (
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-            Vec<[Real; 3]>,
-        ),
-    ) {
-        compute::crk::rectangle(&self.particles[..], &other.particles[..])
     }
 }
 

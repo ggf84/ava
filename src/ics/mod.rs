@@ -2,8 +2,9 @@ pub mod imf;
 pub mod sdp;
 
 use crate::{
+    gravity::Energy,
     real::Real,
-    sys::{particles::Particle, system::ParticleSystem},
+    sys::{Particle, ParticleSystem},
 };
 use rand::{distributions::Distribution, Rng};
 
@@ -41,11 +42,11 @@ where
         if let Some(eps_param) = self.eps_param {
             psys.set_eps(eps_param * 1.0); // assume rvir == 1
         }
-        let (ke, pe) = psys.energies();
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
         let ke = psys.scale_to_virial(self.q_vir, ke, pe);
         psys.scale_to_standard(-0.25, ke + pe);
 
-        let (ke, pe) = psys.energies();
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
         let rvir = mtot.powi(2) / (-2.0 * pe);
         eprintln!(
             "mtot: {:?}\nke: {:?}\npe: {:?}\nte: {:?}\nrvir: {:?}",

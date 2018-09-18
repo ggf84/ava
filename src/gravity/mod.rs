@@ -138,10 +138,16 @@ where
     loop1(ni, |i| loop1(nj, |j| loop1(nk, |k| f(i, j, k))));
 }
 
-pub mod acc;
-pub mod crk;
-pub mod energy;
-pub mod jrk;
-pub mod snp;
+mod acc0;
+mod acc1;
+mod acc2;
+mod acc3;
+mod energy;
+
+pub use self::acc0::Acc0;
+pub use self::acc1::Acc1;
+pub use self::acc2::Acc2;
+pub use self::acc3::Acc3;
+pub use self::energy::Energy;
 
 // -- end of file --

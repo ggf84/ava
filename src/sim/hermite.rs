@@ -3,9 +3,9 @@ use super::{
     TimeStepScheme::{self, *},
 };
 use crate::{
-    compute,
+    gravity::{Acc1, Acc2, Acc3},
     real::Real,
-    sys::{particles::Particle, system::ParticleSystem},
+    sys::{Particle, ParticleSystem},
 };
 use serde_derive::{Deserialize, Serialize};
 
@@ -146,8 +146,9 @@ impl Hermite for Hermite4 {
         }
     }
     fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
-        let (iiacc0, iiacc1) = compute::jrk::triangle(&psys[..nact]);
-        let ((ijacc0, ijacc1), _) = compute::jrk::rectangle(&psys[..nact], &psys[nact..]);
+        let kernel = Acc1 {};
+        let (iiacc0, iiacc1) = kernel.compute(&psys[..nact]);
+        let ((ijacc0, ijacc1), _) = kernel.compute_mutual(&psys[..nact], &psys[nact..]);
         for (i, p) in psys[..nact].iter_mut().enumerate() {
             for k in 0..3 {
                 p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];
@@ -275,8 +276,9 @@ impl Hermite for Hermite6 {
         }
     }
     fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
-        let (iiacc0, iiacc1, iiacc2) = compute::snp::triangle(&psys[..nact]);
-        let ((ijacc0, ijacc1, ijacc2), _) = compute::snp::rectangle(&psys[..nact], &psys[nact..]);
+        let kernel = Acc2 {};
+        let (iiacc0, iiacc1, iiacc2) = kernel.compute(&psys[..nact]);
+        let ((ijacc0, ijacc1, ijacc2), _) = kernel.compute_mutual(&psys[..nact], &psys[nact..]);
         for (i, p) in psys[..nact].iter_mut().enumerate() {
             for k in 0..3 {
                 p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];
@@ -456,9 +458,10 @@ impl Hermite for Hermite8 {
         }
     }
     fn evaluate(&self, nact: usize, psys: &mut [Particle]) {
-        let (iiacc0, iiacc1, iiacc2, iiacc3) = compute::crk::triangle(&psys[..nact]);
+        let kernel = Acc3 {};
+        let (iiacc0, iiacc1, iiacc2, iiacc3) = kernel.compute(&psys[..nact]);
         let ((ijacc0, ijacc1, ijacc2, ijacc3), _) =
-            compute::crk::rectangle(&psys[..nact], &psys[nact..]);
+            kernel.compute_mutual(&psys[..nact], &psys[nact..]);
         for (i, p) in psys[..nact].iter_mut().enumerate() {
             for k in 0..3 {
                 p.acc0[k] = iiacc0[i][k] + ijacc0[i][k];

@@ -1,5 +1,5 @@
 use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
-use crate::{real::Real, sys::particles::Particle};
+use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
 #[repr(align(16))]
@@ -71,7 +71,9 @@ impl<'a> FromSoA for EnergyDstSliceMut<'a> {
     }
 }
 
-pub struct Energy {}
+pub struct Energy {
+    mtot: Real,
+}
 impl_kernel!(
     EnergySrcSlice,
     EnergyDstSliceMut,
@@ -153,60 +155,115 @@ impl Kernel for Energy {
     }
 }
 
-pub fn triangle(psys: &[Particle]) -> (Vec<Real>, Vec<Real>) {
-    let mut src = EnergySrcVec::with_capacity(psys.len());
-    let mut dst = EnergyDstVec::with_capacity(psys.len());
-    for p in psys.iter() {
-        src.push(EnergySrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        dst.push(Default::default());
+impl Energy {
+    pub fn compute(&self, psys: &[Particle]) -> (Vec<Real>, Vec<Real>) {
+        let mut src = EnergySrcVec::with_capacity(psys.len());
+        let mut dst = EnergyDstVec::with_capacity(psys.len());
+        for p in psys.iter() {
+            src.push(EnergySrc {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            dst.push(Default::default());
+        }
+
+        self.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+
+        (dst.ekin, dst.epot)
     }
+    pub fn compute_mutual(
+        &self,
+        ipsys: &[Particle],
+        jpsys: &[Particle],
+    ) -> ((Vec<Real>, Vec<Real>), (Vec<Real>, Vec<Real>)) {
+        let mut isrc = EnergySrcVec::with_capacity(ipsys.len());
+        let mut idst = EnergyDstVec::with_capacity(ipsys.len());
+        for p in ipsys.iter() {
+            isrc.push(EnergySrc {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            idst.push(Default::default());
+        }
 
-    Energy {}.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+        let mut jsrc = EnergySrcVec::with_capacity(jpsys.len());
+        let mut jdst = EnergyDstVec::with_capacity(jpsys.len());
+        for p in jpsys.iter() {
+            jsrc.push(EnergySrc {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            jdst.push(Default::default());
+        }
 
-    (dst.ekin, dst.epot)
+        self.rectangle(
+            &isrc.as_slice(),
+            &mut idst.as_mut_slice(),
+            &jsrc.as_slice(),
+            &mut jdst.as_mut_slice(),
+        );
+
+        ((idst.ekin, idst.epot), (jdst.ekin, jdst.epot))
+    }
 }
 
-pub fn rectangle(
-    ipsys: &[Particle],
-    jpsys: &[Particle],
-) -> ((Vec<Real>, Vec<Real>), (Vec<Real>, Vec<Real>)) {
-    let mut isrc = EnergySrcVec::with_capacity(ipsys.len());
-    let mut idst = EnergyDstVec::with_capacity(ipsys.len());
-    for p in ipsys.iter() {
-        isrc.push(EnergySrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        idst.push(Default::default());
+impl Energy {
+    pub fn new(mtot: Real) -> Self {
+        Energy { mtot }
     }
+    /// Compute the kinetic and potential energies of the system.
+    ///
+    /// \\[ KE = \frac{1}{4 M} \sum_{i=0}^{N} \sum_{j=0}^{N} m_{i} m_{j} v_{ij}^{2} \\]
+    ///
+    /// \\[ PE = -\frac{1}{2} \sum_{i=0}^{N} \sum_{j=0}^{N} \frac{m_{i} m_{j}}{r_{ij}} \\]
+    ///
+    /// where \\( M \\) is the total mass, and \\( N \\) is the number of particles in the system.
+    ///
+    /// Thus, \\[ KE_{tot} = KE + KE_{CoM}\\]
+    ///
+    /// and, \\[ PE_{tot} = PE \\]
+    ///
+    pub fn energies(&self, psys: &[Particle]) -> (Real, Real) {
+        let (ke, pe) = self.compute(psys);
 
-    let mut jsrc = EnergySrcVec::with_capacity(jpsys.len());
-    let mut jdst = EnergyDstVec::with_capacity(jpsys.len());
-    for p in jpsys.iter() {
-        jsrc.push(EnergySrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        jdst.push(Default::default());
+        let pe = pe.iter().sum::<Real>() * 0.5;
+        let ke = ke.iter().sum::<Real>() * 0.25 / self.mtot;
+
+        (ke, pe)
     }
+    /// Compute the mutual kinetic and potential energies of two disjoint systems.
+    ///
+    /// \\[ KE_{12} = \frac{1}{4 M} \sum_{i=0}^{N_{1}} \sum_{j=0}^{N_{2}} m_{i} m_{j} v_{ij}^{2} \\]
+    ///
+    /// \\[ PE_{12} = -\frac{1}{2} \sum_{i=0}^{N_{1}} \sum_{j=0}^{N_{2}} \frac{m_{i} m_{j}}{r_{ij}} \\]
+    ///
+    /// where \\( M = M_{1} + M_{2} \\) is the total mass of the combined system, and \\( N_{1} \\)
+    /// and \\( N_{2} \\) are the number of particles in each system.
+    ///
+    /// Thus, \\[ KE_{tot} = \frac{M_{1} KE_{1} + M_{2} KE_{2}}{M} + KE_{12} + KE_{CoM} \\]
+    ///
+    /// and, \\[ PE_{tot} = PE_{1} + PE_{2} + PE_{12} \\]
+    ///
+    pub fn energies_mutual(&self, ipsys: &[Particle], jpsys: &[Particle]) -> (Real, Real) {
+        let ((ike, ipe), (jke, jpe)) = self.compute_mutual(ipsys, jpsys);
 
-    Energy {}.rectangle(
-        &isrc.as_slice(),
-        &mut idst.as_mut_slice(),
-        &jsrc.as_slice(),
-        &mut jdst.as_mut_slice(),
-    );
+        let ipe = ipe.iter().sum::<Real>() * 0.5;
+        let ike = ike.iter().sum::<Real>() * 0.25 / self.mtot;
 
-    ((idst.ekin, idst.epot), (jdst.ekin, jdst.epot))
+        let jpe = jpe.iter().sum::<Real>() * 0.5;
+        let jke = jke.iter().sum::<Real>() * 0.25 / self.mtot;
+
+        let pe = ipe + jpe;
+        let ke = ike + jke;
+
+        (ke, pe)
+    }
 }
 
 #[cfg(all(feature = "nightly", test))]
@@ -233,7 +290,7 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Energy {};
+        let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
             let mut ip_src: [EnergySrcSoA; NTILES] = [Default::default(); NTILES];

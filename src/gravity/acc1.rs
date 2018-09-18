@@ -1,10 +1,10 @@
 use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
-use crate::{real::Real, sys::particles::Particle};
+use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct JrkSrcSoA {
+struct Acc1SrcSoA {
     eps: [Real; TILE],
     mass: [Real; TILE],
     rdot0: [[Real; TILE]; 3],
@@ -13,14 +13,14 @@ struct JrkSrcSoA {
 
 #[repr(align(16))]
 #[derive(Debug, Default, Copy, Clone)]
-struct JrkDstSoA {
+struct Acc1DstSoA {
     adot0: [[Real; TILE]; 3],
     adot1: [[Real; TILE]; 3],
 }
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct JrkSrc {
+struct Acc1Src {
     eps: Real,
     mass: Real,
     rdot0: [Real; 3],
@@ -29,13 +29,13 @@ struct JrkSrc {
 
 #[derive(Debug, Default, PartialEq, StructOfArray)]
 #[soa_derive = "Debug, PartialEq"]
-struct JrkDst {
+struct Acc1Dst {
     adot0: [Real; 3],
     adot1: [Real; 3],
 }
 
-impl<'a> ToSoA for JrkSrcSlice<'a> {
-    type SrcTypeSoA = JrkSrcSoA;
+impl<'a> ToSoA for Acc1SrcSlice<'a> {
+    type SrcTypeSoA = Acc1SrcSoA;
     fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -53,9 +53,9 @@ impl<'a> ToSoA for JrkSrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA for JrkDstSliceMut<'a> {
-    type SrcTypeSoA = JrkSrcSoA;
-    type DstTypeSoA = JrkDstSoA;
+impl<'a> FromSoA for Acc1DstSliceMut<'a> {
+    type SrcTypeSoA = Acc1SrcSoA;
+    type DstTypeSoA = Acc1DstSoA;
     fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -72,17 +72,17 @@ impl<'a> FromSoA for JrkDstSliceMut<'a> {
     }
 }
 
-pub struct Jrk {}
-impl_kernel!(JrkSrcSlice, JrkDstSliceMut, JrkSrcSoA, JrkDstSoA, 64);
+pub struct Acc1 {}
+impl_kernel!(Acc1SrcSlice, Acc1DstSliceMut, Acc1SrcSoA, Acc1DstSoA, 64);
 
-impl Kernel for Jrk {
+impl Kernel for Acc1 {
     // flop count: 56
     fn p2p(
         &self,
-        ip_src: &JrkSrcSoA,
-        ip_dst: &mut JrkDstSoA,
-        jp_src: &JrkSrcSoA,
-        jp_dst: &mut JrkDstSoA,
+        ip_src: &Acc1SrcSoA,
+        ip_dst: &mut Acc1DstSoA,
+        jp_src: &Acc1SrcSoA,
+        jp_dst: &mut Acc1DstSoA,
     ) {
         let mut drdot0: [[[Real; TILE]; TILE]; 3] = Default::default();
         let mut drdot1: [[[Real; TILE]; TILE]; 3] = Default::default();
@@ -155,63 +155,67 @@ impl Kernel for Jrk {
     }
 }
 
-pub fn triangle(psys: &[Particle]) -> (Vec<[Real; 3]>, Vec<[Real; 3]>) {
-    let mut src = JrkSrcVec::with_capacity(psys.len());
-    let mut dst = JrkDstVec::with_capacity(psys.len());
-    for p in psys.iter() {
-        src.push(JrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        dst.push(Default::default());
+impl Acc1 {
+    /// For each particle of the system, compute the {0, 1}-derivative of the gravitational acceleration.
+    pub fn compute(&self, psys: &[Particle]) -> (Vec<[Real; 3]>, Vec<[Real; 3]>) {
+        let mut src = Acc1SrcVec::with_capacity(psys.len());
+        let mut dst = Acc1DstVec::with_capacity(psys.len());
+        for p in psys.iter() {
+            src.push(Acc1Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            dst.push(Default::default());
+        }
+
+        self.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+
+        (dst.adot0, dst.adot1)
     }
+    /// For each particle of two disjoint systems, compute the mutual {0, 1}-derivative of the gravitational acceleration.
+    pub fn compute_mutual(
+        &self,
+        ipsys: &[Particle],
+        jpsys: &[Particle],
+    ) -> (
+        (Vec<[Real; 3]>, Vec<[Real; 3]>),
+        (Vec<[Real; 3]>, Vec<[Real; 3]>),
+    ) {
+        let mut isrc = Acc1SrcVec::with_capacity(ipsys.len());
+        let mut idst = Acc1DstVec::with_capacity(ipsys.len());
+        for p in ipsys.iter() {
+            isrc.push(Acc1Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            idst.push(Default::default());
+        }
 
-    Jrk {}.triangle(&src.as_slice(), &mut dst.as_mut_slice());
+        let mut jsrc = Acc1SrcVec::with_capacity(jpsys.len());
+        let mut jdst = Acc1DstVec::with_capacity(jpsys.len());
+        for p in jpsys.iter() {
+            jsrc.push(Acc1Src {
+                eps: p.eps,
+                mass: p.mass,
+                rdot0: p.pos,
+                rdot1: p.vel,
+            });
+            jdst.push(Default::default());
+        }
 
-    (dst.adot0, dst.adot1)
-}
+        self.rectangle(
+            &isrc.as_slice(),
+            &mut idst.as_mut_slice(),
+            &jsrc.as_slice(),
+            &mut jdst.as_mut_slice(),
+        );
 
-pub fn rectangle(
-    ipsys: &[Particle],
-    jpsys: &[Particle],
-) -> (
-    (Vec<[Real; 3]>, Vec<[Real; 3]>),
-    (Vec<[Real; 3]>, Vec<[Real; 3]>),
-) {
-    let mut isrc = JrkSrcVec::with_capacity(ipsys.len());
-    let mut idst = JrkDstVec::with_capacity(ipsys.len());
-    for p in ipsys.iter() {
-        isrc.push(JrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        idst.push(Default::default());
+        ((idst.adot0, idst.adot1), (jdst.adot0, jdst.adot1))
     }
-
-    let mut jsrc = JrkSrcVec::with_capacity(jpsys.len());
-    let mut jdst = JrkDstVec::with_capacity(jpsys.len());
-    for p in jpsys.iter() {
-        jsrc.push(JrkSrc {
-            eps: p.eps,
-            mass: p.mass,
-            rdot0: p.pos,
-            rdot1: p.vel,
-        });
-        jdst.push(Default::default());
-    }
-
-    Jrk {}.rectangle(
-        &isrc.as_slice(),
-        &mut idst.as_mut_slice(),
-        &jsrc.as_slice(),
-        &mut jdst.as_mut_slice(),
-    );
-
-    ((idst.adot0, idst.adot1), (jdst.adot0, jdst.adot1))
 }
 
 #[cfg(all(feature = "nightly", test))]
@@ -225,9 +229,9 @@ mod bench {
 
     const NTILES: usize = 256 / TILE;
 
-    impl Distribution<JrkSrcSoA> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> JrkSrcSoA {
-            JrkSrcSoA {
+    impl Distribution<Acc1SrcSoA> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Acc1SrcSoA {
+            Acc1SrcSoA {
                 eps: rng.gen(),
                 mass: rng.gen(),
                 rdot0: rng.gen(),
@@ -238,13 +242,13 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Jrk {};
+        let kernel = Acc1 {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
-            let mut ip_src: [JrkSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut ip_dst: [JrkDstSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_src: [JrkSrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_dst: [JrkDstSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_src: [Acc1SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_dst: [Acc1DstSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_src: [Acc1SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_dst: [Acc1DstSoA; NTILES] = [Default::default(); NTILES];
             ip_src.iter_mut().for_each(|p| *p = rng.gen());
             jp_src.iter_mut().for_each(|p| *p = rng.gen());
             for ii in 0..NTILES {
