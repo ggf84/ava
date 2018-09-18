@@ -1,4 +1,4 @@
-use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
+use super::{loop1, loop2, loop3, Compute, FromSoA, ToSoA, TILE};
 use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
@@ -34,9 +34,8 @@ struct Acc1Dst {
     adot1: [Real; 3],
 }
 
-impl<'a> ToSoA for Acc1SrcSlice<'a> {
-    type SrcTypeSoA = Acc1SrcSoA;
-    fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
+impl<'a> ToSoA<[Acc1SrcSoA]> for Acc1SrcSlice<'a> {
+    fn to_soa(&self, ps_src: &mut [Acc1SrcSoA]) {
         let n = self.len();
         let mut jj = 0;
         for p_src in ps_src.iter_mut() {
@@ -53,10 +52,8 @@ impl<'a> ToSoA for Acc1SrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA for Acc1DstSliceMut<'a> {
-    type SrcTypeSoA = Acc1SrcSoA;
-    type DstTypeSoA = Acc1DstSoA;
-    fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
+impl<'a> FromSoA<[Acc1SrcSoA], [Acc1DstSoA]> for Acc1DstSliceMut<'a> {
+    fn from_soa(&mut self, ps_src: &[Acc1SrcSoA], ps_dst: &[Acc1DstSoA]) {
         let n = self.len();
         let mut jj = 0;
         for (p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
@@ -155,9 +152,11 @@ impl Kernel for Acc1 {
     }
 }
 
-impl Acc1 {
-    /// For each particle of the system, compute the {0, 1}-derivative of the gravitational acceleration.
-    pub fn compute(&self, psys: &[Particle]) -> (Vec<[Real; 3]>, Vec<[Real; 3]>) {
+impl Compute<[Particle]> for Acc1 {
+    type Output = (Vec<[Real; 3]>, Vec<[Real; 3]>);
+    /// For each particle of the system, compute the k-th derivatives
+    /// of the gravitational acceleration, for k = {0, 1}.
+    fn compute(&self, psys: &[Particle]) -> Self::Output {
         let mut src = Acc1SrcVec::with_capacity(psys.len());
         let mut dst = Acc1DstVec::with_capacity(psys.len());
         for p in psys.iter() {
@@ -174,15 +173,13 @@ impl Acc1 {
 
         (dst.adot0, dst.adot1)
     }
-    /// For each particle of two disjoint systems, compute the mutual {0, 1}-derivative of the gravitational acceleration.
-    pub fn compute_mutual(
+    /// For each particle of two disjoint systems, A and B, compute the mutual k-th derivatives
+    /// of the gravitational acceleration, for k = {0, 1}.
+    fn compute_mutual(
         &self,
         ipsys: &[Particle],
         jpsys: &[Particle],
-    ) -> (
-        (Vec<[Real; 3]>, Vec<[Real; 3]>),
-        (Vec<[Real; 3]>, Vec<[Real; 3]>),
-    ) {
+    ) -> (Self::Output, Self::Output) {
         let mut isrc = Acc1SrcVec::with_capacity(ipsys.len());
         let mut idst = Acc1DstVec::with_capacity(ipsys.len());
         for p in ipsys.iter() {

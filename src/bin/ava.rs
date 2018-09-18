@@ -1,5 +1,5 @@
 use ava::{
-    gravity::{Acc0, Acc1, Acc2, Acc3, Energy},
+    gravity::{Acc0, Acc1, Acc2, Acc3, Compute, Energy},
     ics::{
         imf::{EqualMass, Maschberger2013},
         sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},

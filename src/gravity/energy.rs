@@ -1,4 +1,4 @@
-use super::{loop1, loop2, loop3, FromSoA, ToSoA, TILE};
+use super::{loop1, loop2, loop3, Compute, FromSoA, ToSoA, TILE};
 use crate::{real::Real, sys::Particle};
 use soa_derive::StructOfArray;
 
@@ -34,9 +34,8 @@ struct EnergyDst {
     epot: Real,
 }
 
-impl<'a> ToSoA for EnergySrcSlice<'a> {
-    type SrcTypeSoA = EnergySrcSoA;
-    fn to_soa(&self, ps_src: &mut [Self::SrcTypeSoA]) {
+impl<'a> ToSoA<[EnergySrcSoA]> for EnergySrcSlice<'a> {
+    fn to_soa(&self, ps_src: &mut [EnergySrcSoA]) {
         let n = self.len();
         let mut jj = 0;
         for p_src in ps_src.iter_mut() {
@@ -53,10 +52,8 @@ impl<'a> ToSoA for EnergySrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA for EnergyDstSliceMut<'a> {
-    type SrcTypeSoA = EnergySrcSoA;
-    type DstTypeSoA = EnergyDstSoA;
-    fn from_soa(&mut self, ps_src: &[Self::SrcTypeSoA], ps_dst: &[Self::DstTypeSoA]) {
+impl<'a> FromSoA<[EnergySrcSoA], [EnergyDstSoA]> for EnergyDstSliceMut<'a> {
+    fn from_soa(&mut self, ps_src: &[EnergySrcSoA], ps_dst: &[EnergyDstSoA]) {
         let n = self.len();
         let mut jj = 0;
         for (_p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
@@ -155,8 +152,9 @@ impl Kernel for Energy {
     }
 }
 
-impl Energy {
-    pub fn compute(&self, psys: &[Particle]) -> (Vec<Real>, Vec<Real>) {
+impl Compute<[Particle]> for Energy {
+    type Output = (Vec<Real>, Vec<Real>);
+    fn compute(&self, psys: &[Particle]) -> Self::Output {
         let mut src = EnergySrcVec::with_capacity(psys.len());
         let mut dst = EnergyDstVec::with_capacity(psys.len());
         for p in psys.iter() {
@@ -173,11 +171,11 @@ impl Energy {
 
         (dst.ekin, dst.epot)
     }
-    pub fn compute_mutual(
+    fn compute_mutual(
         &self,
         ipsys: &[Particle],
         jpsys: &[Particle],
-    ) -> ((Vec<Real>, Vec<Real>), (Vec<Real>, Vec<Real>)) {
+    ) -> (Self::Output, Self::Output) {
         let mut isrc = EnergySrcVec::with_capacity(ipsys.len());
         let mut idst = EnergyDstVec::with_capacity(ipsys.len());
         for p in ipsys.iter() {
@@ -237,18 +235,18 @@ impl Energy {
 
         (ke, pe)
     }
-    /// Compute the mutual kinetic and potential energies of two disjoint systems.
+    /// Compute the mutual kinetic and potential energies of two disjoint systems, A and B.
     ///
-    /// \\[ KE_{12} = \frac{1}{4 M} \sum_{i=0}^{N_{1}} \sum_{j=0}^{N_{2}} m_{i} m_{j} v_{ij}^{2} \\]
+    /// \\[ KE_{AB} = \frac{1}{4 M} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} m_{i} m_{j} v_{ij}^{2} \\]
     ///
-    /// \\[ PE_{12} = -\frac{1}{2} \sum_{i=0}^{N_{1}} \sum_{j=0}^{N_{2}} \frac{m_{i} m_{j}}{r_{ij}} \\]
+    /// \\[ PE_{AB} = -\frac{1}{2} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} \frac{m_{i} m_{j}}{r_{ij}} \\]
     ///
-    /// where \\( M = M_{1} + M_{2} \\) is the total mass of the combined system, and \\( N_{1} \\)
-    /// and \\( N_{2} \\) are the number of particles in each system.
+    /// where \\( M = M_{A} + M_{B} \\) is the total mass of the combined system, and \\( N_{A} \\)
+    /// and \\( N_{B} \\) are the number of particles in each system.
     ///
-    /// Thus, \\[ KE_{tot} = \frac{M_{1} KE_{1} + M_{2} KE_{2}}{M} + KE_{12} + KE_{CoM} \\]
+    /// Thus, \\[ KE_{tot} = \frac{M_{A} KE_{A} + M_{B} KE_{B}}{M} + KE_{AB} + KE_{CoM} \\]
     ///
-    /// and, \\[ PE_{tot} = PE_{1} + PE_{2} + PE_{12} \\]
+    /// and, \\[ PE_{tot} = PE_{A} + PE_{B} + PE_{AB} \\]
     ///
     pub fn energies_mutual(&self, ipsys: &[Particle], jpsys: &[Particle]) -> (Real, Real) {
         let ((ike, ipe), (jke, jpe)) = self.compute_mutual(ipsys, jpsys);

@@ -3,7 +3,7 @@ use super::{
     TimeStepScheme::{self, *},
 };
 use crate::{
-    gravity::{Acc1, Acc2, Acc3},
+    gravity::{Acc1, Acc2, Acc3, Compute},
     real::Real,
     sys::{Particle, ParticleSystem},
 };

@@ -3,15 +3,18 @@ use std::mem::size_of;
 
 const TILE: usize = 16 / size_of::<Real>();
 
-trait ToSoA {
-    type SrcTypeSoA;
-    fn to_soa(&self, p_src: &mut [Self::SrcTypeSoA]);
+pub trait Compute<T: ?Sized> {
+    type Output;
+    fn compute(&self, psys: &T) -> Self::Output;
+    fn compute_mutual(&self, ipsys: &T, jpsys: &T) -> (Self::Output, Self::Output);
 }
 
-trait FromSoA {
-    type SrcTypeSoA;
-    type DstTypeSoA;
-    fn from_soa(&mut self, p_src: &[Self::SrcTypeSoA], p_dst: &[Self::DstTypeSoA]);
+trait ToSoA<T: ?Sized> {
+    fn to_soa(&self, p_src: &mut T);
+}
+
+trait FromSoA<T: ?Sized, U: ?Sized> {
+    fn from_soa(&mut self, p_src: &T, p_dst: &U);
 }
 
 macro_rules! impl_kernel {

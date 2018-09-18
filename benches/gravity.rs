@@ -3,7 +3,7 @@
 #[cfg(all(feature = "nightly", test))]
 mod bench {
     use ava::{
-        gravity::{Acc0, Acc1, Acc2, Acc3, Energy},
+        gravity::{Acc0, Acc1, Acc2, Acc3, Compute, Energy},
         ics::{imf::EqualMass, sdp::Plummer, Model},
         real::Real,
         sys::ParticleSystem,
