@@ -5,6 +5,7 @@ use ava::{
         sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},
         Model,
     },
+    sys::ParticleSystem,
 };
 use rand::{SeedableRng, StdRng};
 use std::{
@@ -22,9 +23,10 @@ fn main() -> Result<(), std::io::Error> {
     // let imf = Maschberger2013::new(0.01, 150.0);
     // let sdp = Plummer::new();
     let sdp = Dehnen1::new();
-    let model = Model::new(4 * npart, &imf, &sdp, 0.5, None);
+    let model = Model::new(imf, sdp);
 
-    let mut psys = model.build(&mut rng);
+    let mut psys =
+        ParticleSystem::from_model(4 * npart, &model, &mut rng).to_standard_units(0.5, None);
 
     let file = File::create("cluster.txt")?;
     let mut writer = BufWriter::new(file);
@@ -38,8 +40,10 @@ fn main() -> Result<(), std::io::Error> {
         )?;
     }
 
-    let psys1 = Model::new(7 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
-    let psys2 = Model::new(3 * npart, &imf, &sdp, 0.5, None).build(&mut rng);
+    let psys1 =
+        ParticleSystem::from_model(7 * npart, &model, &mut rng).to_standard_units(0.5, None);
+    let psys2 =
+        ParticleSystem::from_model(3 * npart, &model, &mut rng).to_standard_units(0.5, None);
     let ((iacc0_21,), (jacc0_21,)) = Acc0 {}.compute_mutual(psys2.as_slice(), psys1.as_slice());
     let ((iacc0_12,), (jacc0_12,)) = Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
     assert!(iacc0_21 == jacc0_12);
@@ -143,7 +147,6 @@ fn main() -> Result<(), std::io::Error> {
 
     // TODO: put this somewhere as a test.
     {
-        use ava::sys::ParticleSystem;
         let n = psys.len();
         let mut psys_1 = ParticleSystem::new();
         let mut psys_2 = ParticleSystem::new();
@@ -260,9 +263,9 @@ fn main() -> Result<(), std::io::Error> {
     let imf = Maschberger2013::new(0.01, 150.0);
     let sdp = Plummer::new();
     // let sdp = Dehnen0::new();
-    let model = Model::new(npart, imf, sdp, 0.5, Some(1.0));
-
-    let psys = model.build(&mut rng);
+    let model = Model::new(imf, sdp);
+    let psys =
+        ParticleSystem::from_model(npart, &model, &mut rng).to_standard_units(0.5, Some(1.0));
 
     let eta = 0.5;
 

@@ -1,4 +1,5 @@
-use crate::{real::Real, sys::particles::Particle};
+use crate::{gravity::Energy, real::Real, sys::particles::Particle};
+use rand::{distributions::Distribution, Rng};
 use serde_derive::{Deserialize, Serialize};
 use std::slice::{Iter, IterMut};
 
@@ -11,6 +12,45 @@ impl ParticleSystem {
     pub fn new() -> Self {
         Default::default()
     }
+    pub fn from_model<Model, R>(npart: usize, model: &Model, rng: &mut R) -> Self
+    where
+        Model: Distribution<Particle>,
+        R: Rng,
+    {
+        ParticleSystem {
+            particles: model.sample_iter(rng).take(npart).collect(),
+        }
+    }
+    /// Convert the system to standard units (G = M = -4E = 1).
+    pub fn to_standard_units(mut self, q_vir: Real, eps_param: Option<Real>) -> Self {
+        let (mtot, [rx, ry, rz], [vx, vy, vz]) = self.com_mass_pos_vel();
+        // reset center-of-mass to the origin of coordinates.
+        self.com_move_by([-rx, -ry, -rz], [-vx, -vy, -vz]);
+        let mtot = self.scale_mass(1.0 / mtot);
+
+        if let Some(eps_param) = eps_param {
+            self.set_eps(eps_param * 1.0); // assume rvir == 1
+        }
+        let (ke, pe) = Energy::new(mtot).energies(self.as_slice());
+        let ke = self.scale_to_virial(q_vir, ke, pe);
+        self.scale_pos_vel((ke + pe) / -0.25);
+
+        let (ke, pe) = Energy::new(mtot).energies(self.as_slice());
+        let rvir = mtot.powi(2) / (-2.0 * pe);
+        eprintln!(
+            "mtot: {:?}\nke: {:?}\npe: {:?}\nte: {:?}\nrvir: {:?}",
+            mtot,
+            ke,
+            pe,
+            ke + pe,
+            rvir
+        );
+
+        self
+    }
+}
+
+impl ParticleSystem {
     pub fn len(&self) -> usize {
         self.particles.len()
     }
@@ -110,11 +150,6 @@ impl ParticleSystem {
             }
         }
         -q_vir * pe
-    }
-    /// Scale positions and velocities to standard units (G = M = -4E = 1).
-    pub fn scale_to_standard(&mut self, te0: Real, te: Real) {
-        let r_scale = te / te0;
-        self.scale_pos_vel(r_scale);
     }
     /// Set the softening parameter.
     pub fn set_eps(&mut self, eps_scale: Real) {

@@ -8,7 +8,7 @@ mod bench {
         real::Real,
         sys::ParticleSystem,
     };
-    use rand::{distributions::Distribution, SeedableRng, StdRng};
+    use rand::{SeedableRng, StdRng};
     use std::mem::size_of;
     use test::Bencher;
 
@@ -16,16 +16,14 @@ mod bench {
     const NTILES: usize = 256 / TILE;
     const N: usize = NTILES * TILE;
 
-    fn init_particle_system(seed: u8, npart: usize) -> ParticleSystem {
+    fn init_particle_system(npart: usize, seed: u8) -> ParticleSystem {
         let mut rng = StdRng::from_seed([seed; 32]);
 
         let imf = EqualMass::new(1.0);
         let sdp = Plummer::new();
-        let model = Model::new(npart, &imf, &sdp, 0.5, None);
-        let mut psys = ParticleSystem::new();
-        psys.particles = model.sample_iter(&mut rng).take(npart).collect();
+        let model = Model::new(imf, sdp);
 
-        psys
+        ParticleSystem::from_model(npart, &model, &mut rng) // .to_standard_units(0.5, None)
     }
 
     mod acc0 {
@@ -34,15 +32,15 @@ mod bench {
         #[bench]
         fn compute(b: &mut Bencher) {
             let kernel = Acc0 {};
-            let psys = init_particle_system(0, N);
+            let psys = init_particle_system(N, 0);
             b.iter(|| kernel.compute(psys.as_slice()));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
             let kernel = Acc0 {};
-            let psys1 = init_particle_system(1, N);
-            let psys2 = init_particle_system(2, N);
+            let psys1 = init_particle_system(N, 1);
+            let psys2 = init_particle_system(N, 2);
             b.iter(|| kernel.compute_mutual(psys1.as_slice(), psys2.as_slice()));
         }
     }
@@ -53,15 +51,15 @@ mod bench {
         #[bench]
         fn compute(b: &mut Bencher) {
             let kernel = Acc1 {};
-            let psys = init_particle_system(0, N);
+            let psys = init_particle_system(N, 0);
             b.iter(|| kernel.compute(psys.as_slice()));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
             let kernel = Acc1 {};
-            let psys1 = init_particle_system(1, N);
-            let psys2 = init_particle_system(2, N);
+            let psys1 = init_particle_system(N, 1);
+            let psys2 = init_particle_system(N, 2);
             b.iter(|| kernel.compute_mutual(psys1.as_slice(), psys2.as_slice()));
         }
     }
@@ -72,15 +70,15 @@ mod bench {
         #[bench]
         fn compute(b: &mut Bencher) {
             let kernel = Acc2 {};
-            let psys = init_particle_system(0, N);
+            let psys = init_particle_system(N, 0);
             b.iter(|| kernel.compute(psys.as_slice()));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
             let kernel = Acc2 {};
-            let psys1 = init_particle_system(1, N);
-            let psys2 = init_particle_system(2, N);
+            let psys1 = init_particle_system(N, 1);
+            let psys2 = init_particle_system(N, 2);
             b.iter(|| kernel.compute_mutual(psys1.as_slice(), psys2.as_slice()));
         }
     }
@@ -91,15 +89,15 @@ mod bench {
         #[bench]
         fn compute(b: &mut Bencher) {
             let kernel = Acc3 {};
-            let psys = init_particle_system(0, N);
+            let psys = init_particle_system(N, 0);
             b.iter(|| kernel.compute(psys.as_slice()));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
             let kernel = Acc3 {};
-            let psys1 = init_particle_system(1, N);
-            let psys2 = init_particle_system(2, N);
+            let psys1 = init_particle_system(N, 1);
+            let psys2 = init_particle_system(N, 2);
             b.iter(|| kernel.compute_mutual(psys1.as_slice(), psys2.as_slice()));
         }
     }
@@ -110,15 +108,15 @@ mod bench {
         #[bench]
         fn compute(b: &mut Bencher) {
             let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
-            let psys = init_particle_system(0, N);
+            let psys = init_particle_system(N, 0);
             b.iter(|| kernel.compute(psys.as_slice()));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
             let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
-            let psys1 = init_particle_system(1, N);
-            let psys2 = init_particle_system(2, N);
+            let psys1 = init_particle_system(N, 1);
+            let psys2 = init_particle_system(N, 2);
             b.iter(|| kernel.compute_mutual(psys1.as_slice(), psys2.as_slice()));
         }
     }
