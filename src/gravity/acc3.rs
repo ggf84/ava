@@ -131,54 +131,37 @@ impl Kernel for Acc3 {
         });
 
         loop2(TILE, TILE, |i, j| {
+            mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
+        });
+        loop2(TILE, TILE, |i, j| {
             s00[i][j] = ip_src.eps[j ^ i] * jp_src.eps[j];
         });
+
         loop3(3, TILE, TILE, |k, i, j| {
             s00[i][j] += drdot0[k][i][j] * drdot0[k][i][j];
-        });
-
-        loop2(TILE, TILE, |i, j| {
-            s01[i][j] = 0.0;
         });
         loop3(3, TILE, TILE, |k, i, j| {
             s01[i][j] += drdot0[k][i][j] * drdot1[k][i][j];
         });
-
-        loop2(TILE, TILE, |i, j| {
-            s02[i][j] = 0.0;
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            s02[i][j] += drdot0[k][i][j] * drdot2[k][i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            s11[i][j] = 0.0;
-        });
         loop3(3, TILE, TILE, |k, i, j| {
             s11[i][j] += drdot1[k][i][j] * drdot1[k][i][j];
         });
-        loop2(TILE, TILE, |i, j| {
-            s02[i][j] += s11[i][j];
-        });
-
-        loop2(TILE, TILE, |i, j| {
-            s03[i][j] = 0.0;
-        });
         loop3(3, TILE, TILE, |k, i, j| {
-            s03[i][j] += drdot0[k][i][j] * drdot3[k][i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            s12[i][j] = 0.0;
+            s02[i][j] += drdot0[k][i][j] * drdot2[k][i][j];
         });
         loop3(3, TILE, TILE, |k, i, j| {
             s12[i][j] += drdot1[k][i][j] * drdot2[k][i][j];
         });
         loop2(TILE, TILE, |i, j| {
+            s02[i][j] += s11[i][j];
+        });
+        loop3(3, TILE, TILE, |k, i, j| {
+            s03[i][j] += drdot0[k][i][j] * drdot3[k][i][j];
+        });
+        loop2(TILE, TILE, |i, j| {
             s03[i][j] += 3.0 * s12[i][j];
         });
 
-        loop2(TILE, TILE, |i, j| {
-            mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
-        });
         loop2(TILE, TILE, |i, j| {
             rinv2[i][j] = s00[i][j].recip();
         });
@@ -213,13 +196,13 @@ impl Kernel for Acc3 {
         });
 
         loop2(TILE, TILE, |i, j| {
-            q12[i][j] = 2.0 * q01[i][j];
+            q23[i][j] = 3.0 * q01[i][j];
         });
         loop2(TILE, TILE, |i, j| {
             q13[i][j] = 3.0 * q02[i][j];
         });
         loop2(TILE, TILE, |i, j| {
-            q23[i][j] = 3.0 * q01[i][j];
+            q12[i][j] = 2.0 * q01[i][j];
         });
 
         loop3(3, TILE, TILE, |k, i, j| {
