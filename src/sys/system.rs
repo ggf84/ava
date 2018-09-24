@@ -22,7 +22,7 @@ impl ParticleSystem {
         }
     }
     /// Convert the system to standard units (G = M = -4E = 1).
-    pub fn to_standard_units(mut self, q_vir: Real, eps_param: Option<Real>) -> Self {
+    fn as_standard_units(&mut self, q_vir: Real, eps_param: Option<Real>) {
         let (mtot, [rx, ry, rz], [vx, vy, vz]) = self.com_mass_pos_vel();
         // reset center-of-mass to the origin of coordinates.
         self.com_move_by([-rx, -ry, -rz], [-vx, -vy, -vz]);
@@ -45,7 +45,10 @@ impl ParticleSystem {
             ke + pe,
             rvir
         );
-
+    }
+    /// Convert the system to standard units (G = M = -4E = 1).
+    pub fn into_standard_units(mut self, q_vir: Real, eps_param: Option<Real>) -> Self {
+        self.as_standard_units(q_vir, eps_param);
         self
     }
 }

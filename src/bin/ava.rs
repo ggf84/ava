@@ -26,7 +26,7 @@ fn main() -> Result<(), std::io::Error> {
     let model = Model::new(imf, sdp);
 
     let mut psys =
-        ParticleSystem::from_model(4 * npart, &model, &mut rng).to_standard_units(0.5, None);
+        ParticleSystem::from_model(4 * npart, &model, &mut rng).into_standard_units(0.5, None);
 
     let file = File::create("cluster.txt")?;
     let mut writer = BufWriter::new(file);
@@ -41,9 +41,9 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let psys1 =
-        ParticleSystem::from_model(7 * npart, &model, &mut rng).to_standard_units(0.5, None);
+        ParticleSystem::from_model(7 * npart, &model, &mut rng).into_standard_units(0.5, None);
     let psys2 =
-        ParticleSystem::from_model(3 * npart, &model, &mut rng).to_standard_units(0.5, None);
+        ParticleSystem::from_model(3 * npart, &model, &mut rng).into_standard_units(0.5, None);
     let ((iacc0_21,), (jacc0_21,)) = Acc0 {}.compute_mutual(psys2.as_slice(), psys1.as_slice());
     let ((iacc0_12,), (jacc0_12,)) = Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
     assert!(iacc0_21 == jacc0_12);
@@ -265,7 +265,7 @@ fn main() -> Result<(), std::io::Error> {
     // let sdp = Dehnen0::new();
     let model = Model::new(imf, sdp);
     let psys =
-        ParticleSystem::from_model(npart, &model, &mut rng).to_standard_units(0.5, Some(1.0));
+        ParticleSystem::from_model(npart, &model, &mut rng).into_standard_units(0.5, Some(1.0));
 
     let eta = 0.5;
 
