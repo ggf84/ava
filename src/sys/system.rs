@@ -69,8 +69,11 @@ impl ParticleSystem {
     pub fn as_mut_slice(&mut self) -> &mut [Particle] {
         self.particles.as_mut_slice()
     }
-    pub fn sort_by_dt(&mut self, n: usize) {
-        self.particles[..n].sort_unstable_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+    pub fn split_at(&self, mid: usize) -> (&[Particle], &[Particle]) {
+        self.particles.split_at(mid)
+    }
+    pub fn split_at_mut(&mut self, mid: usize) -> (&mut [Particle], &mut [Particle]) {
+        self.particles.split_at_mut(mid)
     }
     pub fn set_shared_dt(&mut self, dt: Real) {
         for p in self.iter_mut() {

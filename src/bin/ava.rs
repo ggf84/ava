@@ -156,12 +156,12 @@ fn main() -> Result<(), std::io::Error> {
         let (mtot_1, _rcom_1, vcom_1) = psys_1.com_mass_pos_vel();
         let vcom_1 = vcom_1.iter().fold(0.0, |s, v| s + v * v).sqrt();
         let kecom_1 = 0.5 * mtot_1 * vcom_1.powi(2);
-        println!("{:?} {:?}", mtot_1, kecom_1);
+        eprintln!("{:?} {:?}", mtot_1, kecom_1);
 
         let (mtot_2, _rcom_2, vcom_2) = psys_2.com_mass_pos_vel();
         let vcom_2 = vcom_2.iter().fold(0.0, |s, v| s + v * v).sqrt();
         let kecom_2 = 0.5 * mtot_2 * vcom_2.powi(2);
-        println!("{:?} {:?}", mtot_2, kecom_2);
+        eprintln!("{:?} {:?}", mtot_2, kecom_2);
 
         let mtot = psys.com_mass();
         // let mtot = mtot_1 + mtot_2;
@@ -171,12 +171,12 @@ fn main() -> Result<(), std::io::Error> {
         let (ke_2, pe_2) = Energy::new(mtot_2).energies(psys_2.as_slice());
         let (ke_12, pe_12) =
             Energy::new(mtot).energies_mutual(psys_1.as_slice(), psys_2.as_slice());
-        println!("{:?} {:?}", ke, pe);
-        println!("{:?} {:?}", ke_1, pe_1);
-        println!("{:?} {:?}", ke_2, pe_2);
-        println!("{:?} {:?}", ke_12, pe_12);
-        println!("{:?} {:?}", ke_1 + ke_2 + kecom, pe_12 + (pe_1 + pe_2));
-        println!(
+        eprintln!("{:?} {:?}", ke, pe);
+        eprintln!("{:?} {:?}", ke_1, pe_1);
+        eprintln!("{:?} {:?}", ke_2, pe_2);
+        eprintln!("{:?} {:?}", ke_12, pe_12);
+        eprintln!("{:?} {:?}", ke_1 + ke_2 + kecom, pe_12 + (pe_1 + pe_2));
+        eprintln!(
             "{:?} {:?}",
             ke_12 + (mtot_1 * ke_1 + mtot_2 * ke_2) / mtot,
             pe_12 + (pe_1 + pe_2)
@@ -283,11 +283,11 @@ fn main() -> Result<(), std::io::Error> {
     // let tstep_scheme = TimeStepScheme::adaptive_shared();
     let tstep_scheme = TimeStepScheme::adaptive_block();
 
-    // let integrator = Hermite4::new(eta, 1);
-    // let integrator = Hermite6::new(eta, 1);
-    let integrator = Hermite8::new(eta, 1);
+    // let integrator = Hermite4::new(eta, tstep_scheme, 1);
+    // let integrator = Hermite6::new(eta, tstep_scheme, 1);
+    let integrator = Hermite8::new(eta, tstep_scheme, 1);
 
-    let mut sim = Simulation::new(integrator, tstep_scheme, psys);
+    let mut sim = Simulation::new(integrator, psys);
     sim.init(dtres_pow, dtlog_pow, dtmax_pow);
     sim.evolve(tend)?;
 

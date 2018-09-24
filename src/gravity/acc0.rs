@@ -1,5 +1,6 @@
 use super::{loop1, loop2, loop3, Compute, FromSoA, ToSoA, TILE};
 use crate::{real::Real, sys::Particle};
+use serde_derive::{Deserialize, Serialize};
 use soa_derive::StructOfArray;
 
 #[repr(align(16))]
@@ -63,6 +64,7 @@ impl<'a> FromSoA<[Acc0SrcSoA], [Acc0DstSoA]> for Acc0DstSliceMut<'a> {
     }
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Acc0 {}
 impl_kernel!(Acc0SrcSlice, Acc0DstSliceMut, Acc0SrcSoA, Acc0DstSoA, 64);
 

@@ -15,18 +15,13 @@ fn to_power_of_two(dt: Real) -> Real {
     (2.0 as Real).powi(pow as i32)
 }
 
-pub(crate) trait Evolver {
+trait Evolver {
     fn init(&self, dtmax: Real, psys: &mut ParticleSystem);
-    fn evolve(
-        &self,
-        tend: Real,
-        psys: &mut ParticleSystem,
-        tstep_scheme: TimeStepScheme,
-    ) -> (Real, Counter);
+    fn evolve(&self, dtmax: Real, psys: &mut ParticleSystem) -> (Real, Counter);
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Counter {
+struct Counter {
     steps: u16,
     bsteps: u32,
     isteps: u64,
@@ -69,6 +64,21 @@ impl TimeStepScheme {
     pub fn adaptive_block() -> TimeStepScheme {
         TimeStepScheme::Adaptive { shared: false }
     }
+    fn match_dt(&self, psys: &mut ParticleSystem) -> Real {
+        match *self {
+            TimeStepScheme::Constant { dt } => {
+                psys.set_shared_dt(dt);
+                dt
+            }
+            TimeStepScheme::Adaptive { shared } => {
+                let dt = psys.particles[0].dt;
+                if shared {
+                    psys.set_shared_dt(dt);
+                }
+                dt
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -92,27 +102,6 @@ impl From<Hermite8> for IntegratorKind {
         IntegratorKind::H8(integrator)
     }
 }
-impl Evolver for IntegratorKind {
-    fn init(&self, dtmax: Real, psys: &mut ParticleSystem) {
-        match self {
-            IntegratorKind::H4(integrator) => integrator.init(dtmax, psys),
-            IntegratorKind::H6(integrator) => integrator.init(dtmax, psys),
-            IntegratorKind::H8(integrator) => integrator.init(dtmax, psys),
-        }
-    }
-    fn evolve(
-        &self,
-        tend: Real,
-        psys: &mut ParticleSystem,
-        tstep_scheme: TimeStepScheme,
-    ) -> (Real, Counter) {
-        match self {
-            IntegratorKind::H4(integrator) => integrator.evolve(tend, psys, tstep_scheme),
-            IntegratorKind::H6(integrator) => integrator.evolve(tend, psys, tstep_scheme),
-            IntegratorKind::H8(integrator) => integrator.evolve(tend, psys, tstep_scheme),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Simulation {
@@ -121,16 +110,11 @@ pub struct Simulation {
     dtlog: Real,
     dtmax: Real,
     logger: Logger,
-    tstep_scheme: TimeStepScheme,
     integrator: IntegratorKind,
     psys: ParticleSystem,
 }
 impl Simulation {
-    pub fn new<I: Into<IntegratorKind>>(
-        integrator: I,
-        tstep_scheme: TimeStepScheme,
-        psys: ParticleSystem,
-    ) -> Simulation {
+    pub fn new<I: Into<IntegratorKind>>(integrator: I, psys: ParticleSystem) -> Simulation {
         Simulation {
             tnow: 0.0,
             dtres: 0.0,
@@ -138,7 +122,6 @@ impl Simulation {
             dtmax: 0.0,
             logger: Default::default(),
             integrator: integrator.into(),
-            tstep_scheme,
             psys,
         }
     }
@@ -151,23 +134,28 @@ impl Simulation {
 }
 impl Simulation {
     pub fn init(&mut self, dtres_pow: i32, dtlog_pow: i32, dtmax_pow: i32) {
-        let mut instant = Instant::now();
         assert!(dtres_pow >= dtlog_pow);
         assert!(dtlog_pow >= dtmax_pow);
         self.dtres = (2.0 as Real).powi(dtres_pow);
         self.dtlog = (2.0 as Real).powi(dtlog_pow);
         self.dtmax = (2.0 as Real).powi(dtmax_pow);
-        self.integrator.init(self.dtmax, &mut self.psys);
+        let mut instant = Instant::now();
+        match &self.integrator {
+            IntegratorKind::H4(integrator) => integrator.init(self.dtmax, &mut self.psys),
+            IntegratorKind::H6(integrator) => integrator.init(self.dtmax, &mut self.psys),
+            IntegratorKind::H8(integrator) => integrator.init(self.dtmax, &mut self.psys),
+        }
         self.logger.init(&self.psys);
         self.logger.log(self.tnow, &self.psys, &mut instant);
     }
     pub fn evolve(&mut self, tend: Real) -> Result<(), ::std::io::Error> {
         let mut instant = Instant::now();
         while self.tnow < tend {
-            let tend = self.tnow + self.dtmax;
-            let (tnow, counter) = self
-                .integrator
-                .evolve(tend, &mut self.psys, self.tstep_scheme);
+            let (tnow, counter) = match &self.integrator {
+                IntegratorKind::H4(integrator) => integrator.evolve(self.dtmax, &mut self.psys),
+                IntegratorKind::H6(integrator) => integrator.evolve(self.dtmax, &mut self.psys),
+                IntegratorKind::H8(integrator) => integrator.evolve(self.dtmax, &mut self.psys),
+            };
             self.tnow = tnow;
             self.logger.counter += counter;
 
