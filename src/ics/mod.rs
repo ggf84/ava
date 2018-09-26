@@ -1,7 +1,7 @@
 pub mod imf;
 pub mod sdp;
 
-use crate::{real::Real, sys::Particle};
+use crate::real::Real;
 use rand::{distributions::Distribution, Rng};
 
 pub struct Model<IMF, SDP> {
@@ -19,15 +19,15 @@ where
     }
 }
 
-impl<IMF, SDP> Distribution<Particle> for Model<IMF, SDP>
+impl<IMF, SDP> Distribution<(Real, [Real; 3], [Real; 3])> for Model<IMF, SDP>
 where
     IMF: Distribution<Real>,
     SDP: Distribution<([Real; 3], [Real; 3])>,
 {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Particle {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> (Real, [Real; 3], [Real; 3]) {
         let m = self.imf.sample(rng);
         let (r, v) = self.sdp.sample(rng);
-        Particle::new(m, r, v)
+        (m, r, v)
     }
 }
 

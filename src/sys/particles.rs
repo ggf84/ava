@@ -1,15 +1,5 @@
 use crate::real::Real;
 use serde_derive::{Deserialize, Serialize};
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-};
-
-fn hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
-}
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Particle {
@@ -54,17 +44,7 @@ pub struct Particle {
 }
 
 impl Particle {
-    pub fn new(mass: Real, pos: [Real; 3], vel: [Real; 3]) -> Self {
-        let state = (
-            mass.to_bits(),
-            pos[0].to_bits(),
-            pos[1].to_bits(),
-            pos[2].to_bits(),
-            vel[0].to_bits(),
-            vel[1].to_bits(),
-            vel[2].to_bits(),
-        );
-        let id = hash(&state);
+    pub fn new(id: u64, mass: Real, pos: [Real; 3], vel: [Real; 3]) -> Self {
         Particle {
             id,
             mass,

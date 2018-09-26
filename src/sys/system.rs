@@ -15,16 +15,21 @@ impl ParticleSystem {
     }
     pub fn from_model<Model, R>(npart: usize, model: &Model, rng: &mut R) -> Self
     where
-        Model: Distribution<Particle>,
+        Model: Distribution<(Real, [Real; 3], [Real; 3])>,
         R: Rng,
     {
+        let mut particles = Vec::with_capacity(npart);
+        for (i, (m, r, v)) in model.sample_iter(rng).take(npart).enumerate() {
+            let p = Particle::new(i as u64, m, r, v);
+            particles.push(p);
+        }
         ParticleSystem {
             time: 0.0,
-            particles: model.sample_iter(rng).take(npart).collect(),
+            particles,
         }
     }
     /// Convert the system to standard units (G = M = -4E = 1).
-    fn as_standard_units(&mut self, q_vir: Real, eps_param: Option<Real>) {
+    fn convert_to_standard_units(&mut self, q_vir: Real, eps_param: Option<Real>) {
         let (mtot, [rx, ry, rz], [vx, vy, vz]) = self.com_mass_pos_vel();
         // reset center-of-mass to the origin of coordinates.
         self.com_move_by([-rx, -ry, -rz], [-vx, -vy, -vz]);
@@ -50,7 +55,7 @@ impl ParticleSystem {
     }
     /// Convert the system to standard units (G = M = -4E = 1).
     pub fn into_standard_units(mut self, q_vir: Real, eps_param: Option<Real>) -> Self {
-        self.as_standard_units(q_vir, eps_param);
+        self.convert_to_standard_units(q_vir, eps_param);
         self
     }
 }
