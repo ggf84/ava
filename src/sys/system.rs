@@ -5,6 +5,7 @@ use std::slice::{Iter, IterMut};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParticleSystem {
+    pub time: Real,
     pub particles: Vec<Particle>,
 }
 
@@ -18,6 +19,7 @@ impl ParticleSystem {
         R: Rng,
     {
         ParticleSystem {
+            time: 0.0,
             particles: model.sample_iter(rng).take(npart).collect(),
         }
     }

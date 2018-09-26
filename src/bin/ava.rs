@@ -283,20 +283,27 @@ fn main() -> Result<(), std::io::Error> {
     // let tstep_scheme = TimeStepScheme::adaptive_shared();
     let tstep_scheme = TimeStepScheme::adaptive_block();
 
-    // let integrator = Hermite4::new(eta, tstep_scheme, 1);
-    // let integrator = Hermite6::new(eta, tstep_scheme, 1);
-    let integrator = Hermite8::new(eta, tstep_scheme, 1);
+    // let integrator = Integrator::hermite4(tstep_scheme, eta, 1);
+    // let integrator = Integrator::hermite6(tstep_scheme, eta, 1);
+    let integrator = Integrator::hermite8(tstep_scheme, eta, 1);
 
-    let mut sim = Simulation::new(integrator, psys);
-    sim.init(dtres_pow, dtlog_pow, dtmax_pow);
-    sim.evolve(tend)?;
+    let mut instant = Instant::now();
+    let mut sim = Simulation::new(
+        psys,
+        integrator,
+        dtres_pow,
+        dtlog_pow,
+        dtmax_pow,
+        &mut instant,
+    );
+    sim.evolve(tend, &mut instant)?;
 
     let file = File::open("res.sim")?;
     let mut reader = BufReader::new(file);
     let mut de_sim: Simulation = bincode::deserialize_from(&mut reader).unwrap();
     assert!(de_sim == sim);
 
-    de_sim.evolve(tend)?;
+    de_sim.evolve(tend, &mut instant)?;
     assert!(de_sim == sim);
 
     Ok(())

@@ -6,8 +6,9 @@ use crate::{
 };
 use serde_derive::{Deserialize, Serialize};
 
-fn count_nact(tnew: Real, psys: &ParticleSystem) -> usize {
+fn count_nact(dt: Real, psys: &ParticleSystem) -> usize {
     let mut nact = 0;
+    let tnew = psys.time + dt;
     for p in psys.iter() {
         // note: assuming psys has been sorted by dt.
         if (p.tnow + p.dt) > tnew {
@@ -22,23 +23,23 @@ fn count_nact(tnew: Real, psys: &ParticleSystem) -> usize {
 pub(super) trait Hermite {
     const ORDER: u8;
     fn npec(&self) -> u8;
-    fn tstep_scheme(&self) -> TimeStepScheme;
+    fn tstep_scheme(&self) -> &TimeStepScheme;
     fn init_acc_dt(&self, psys: &mut ParticleSystem);
-    fn predict(&self, tnew: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem);
+    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem);
     fn ecorrect(&self, nact: usize, psys: &ParticleSystem, psys_new: &mut ParticleSystem);
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem);
 
     /// Set dt <= dtmax and sort by time-steps.
-    fn set_dtmax_and_sort_by_dt(&self, nact: usize, psys: &mut ParticleSystem, mut dtmax: Real) {
-        let (psys_lo, _) = psys.split_at_mut(nact);
-
+    fn set_dtmax_and_sort_by_dt(&self, mut dtmax: Real, nact: usize, psys: &mut ParticleSystem) {
         // ensures tnow is commensurable with dtmax
-        let tnow = psys_lo[0].tnow;
+        let tnow = psys.time;
         while tnow % dtmax != 0.0 {
             dtmax *= 0.5;
         }
 
-        // set dt <= dtmax
+        let (psys_lo, _) = psys.split_at_mut(nact);
+
+        // set time-step limits dt <= dtmax
         psys_lo.iter_mut().for_each(|p| p.dt = dtmax.min(p.dt));
 
         // sort by dt
@@ -52,45 +53,43 @@ impl<T: Hermite> Evolver for T {
         self.init_acc_dt(psys);
 
         let nact = psys.len();
-        self.set_dtmax_and_sort_by_dt(nact, psys, dtmax);
+        self.set_dtmax_and_sort_by_dt(dtmax, nact, psys);
     }
-    fn evolve(&self, dtmax: Real, psys: &mut ParticleSystem) -> (Real, Counter) {
+    fn evolve(&self, dtmax: Real, psys: &mut ParticleSystem) -> Counter {
         let mut counter = Counter::new();
-        let mut tnow = psys.particles[0].tnow;
-        let tend = tnow + dtmax;
-        while tnow < tend {
+        let tend = psys.time + dtmax;
+        while psys.time < tend {
             let dt = self.tstep_scheme().match_dt(psys);
-            let nact = count_nact(tnow + dt, psys);
+            let nact = count_nact(dt, psys);
             let mut psys_new = psys.clone();
-            self.predict(tnow + dt, psys, &mut psys_new);
+            self.predict(dt, psys, &mut psys_new);
             for _ in 0..self.npec() {
                 self.ecorrect(nact, psys, &mut psys_new);
             }
             self.commit(nact, psys, &psys_new);
-            self.set_dtmax_and_sort_by_dt(nact, psys, dtmax);
+            self.set_dtmax_and_sort_by_dt(dtmax, nact, psys);
             counter.isteps += nact as u64;
             counter.bsteps += 1;
-            tnow += dt;
         }
         counter.steps += 1;
-        (tnow, counter)
+        counter
     }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite4 {
-    eta: Real,
-    tstep_scheme: TimeStepScheme,
-    npec: u8,
     kernel: Acc1,
+    tstep_scheme: TimeStepScheme,
+    eta: Real,
+    npec: u8,
 }
 impl Hermite4 {
-    pub fn new(eta: Real, tstep_scheme: TimeStepScheme, npec: u8) -> Self {
+    pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite4 {
-            eta,
-            tstep_scheme,
-            npec,
             kernel: Acc1 {},
+            tstep_scheme,
+            eta,
+            npec,
         }
     }
 }
@@ -100,10 +99,11 @@ impl Hermite for Hermite4 {
     fn npec(&self) -> u8 {
         self.npec
     }
-    fn tstep_scheme(&self) -> TimeStepScheme {
-        self.tstep_scheme
+    fn tstep_scheme(&self) -> &TimeStepScheme {
+        &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
+        let tnow = psys.time;
         let iiacc = self.kernel.compute(&psys.as_slice());
         for (i, p) in psys.iter_mut().enumerate() {
             p.acc0 = iiacc.0[i];
@@ -125,9 +125,12 @@ impl Hermite for Hermite4 {
 
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt);
+            p.tnow = tnow;
         }
     }
-    fn predict(&self, tnew: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+        psys_new.time = psys.time + dt;
+        let tnew = psys_new.time;
         for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
             let dt = tnew - p.tnow;
             let h1 = dt;
@@ -177,6 +180,7 @@ impl Hermite for Hermite4 {
         }
     }
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
+        psys.time = psys_new.time;
         let (psys_lo, _) = psys.split_at_mut(nact);
         let (psys_new_lo, _) = psys_new.split_at(nact);
         for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
@@ -235,18 +239,18 @@ impl Hermite for Hermite4 {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite6 {
-    eta: Real,
-    tstep_scheme: TimeStepScheme,
-    npec: u8,
     kernel: Acc2,
+    tstep_scheme: TimeStepScheme,
+    eta: Real,
+    npec: u8,
 }
 impl Hermite6 {
-    pub fn new(eta: Real, tstep_scheme: TimeStepScheme, npec: u8) -> Self {
+    pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite6 {
-            eta,
-            tstep_scheme,
-            npec,
             kernel: Acc2 {},
+            tstep_scheme,
+            eta,
+            npec,
         }
     }
 }
@@ -256,10 +260,11 @@ impl Hermite for Hermite6 {
     fn npec(&self) -> u8 {
         self.npec
     }
-    fn tstep_scheme(&self) -> TimeStepScheme {
-        self.tstep_scheme
+    fn tstep_scheme(&self) -> &TimeStepScheme {
+        &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
+        let tnow = psys.time;
         let iiacc = self.kernel.compute(&psys.as_slice());
         for (i, p) in psys.iter_mut().enumerate() {
             p.acc0 = iiacc.0[i];
@@ -281,9 +286,12 @@ impl Hermite for Hermite6 {
 
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt);
+            p.tnow = tnow;
         }
     }
-    fn predict(&self, tnew: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+        psys_new.time = psys.time + dt;
+        let tnew = psys_new.time;
         for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
             let dt = tnew - p.tnow;
             let h1 = dt;
@@ -349,6 +357,7 @@ impl Hermite for Hermite6 {
         }
     }
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
+        psys.time = psys_new.time;
         let (psys_lo, _) = psys.split_at_mut(nact);
         let (psys_new_lo, _) = psys_new.split_at(nact);
         for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
@@ -436,18 +445,18 @@ impl Hermite for Hermite6 {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite8 {
-    eta: Real,
-    tstep_scheme: TimeStepScheme,
-    npec: u8,
     kernel: Acc3,
+    tstep_scheme: TimeStepScheme,
+    eta: Real,
+    npec: u8,
 }
 impl Hermite8 {
-    pub fn new(eta: Real, tstep_scheme: TimeStepScheme, npec: u8) -> Self {
+    pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite8 {
-            eta,
-            tstep_scheme,
-            npec,
             kernel: Acc3 {},
+            tstep_scheme,
+            eta,
+            npec,
         }
     }
 }
@@ -457,10 +466,11 @@ impl Hermite for Hermite8 {
     fn npec(&self) -> u8 {
         self.npec
     }
-    fn tstep_scheme(&self) -> TimeStepScheme {
-        self.tstep_scheme
+    fn tstep_scheme(&self) -> &TimeStepScheme {
+        &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
+        let tnow = psys.time;
         let iiacc = self.kernel.compute(&psys.as_slice());
         for (i, p) in psys.iter_mut().enumerate() {
             p.acc0 = iiacc.0[i];
@@ -491,9 +501,12 @@ impl Hermite for Hermite8 {
 
             let dt = 0.125 * self.eta * (u / l).sqrt();
             p.dt = to_power_of_two(dt);
+            p.tnow = tnow;
         }
     }
-    fn predict(&self, tnew: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
+        psys_new.time = psys.time + dt;
+        let tnew = psys_new.time;
         for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
             let dt = tnew - p.tnow;
             let h1 = dt;
@@ -578,6 +591,7 @@ impl Hermite for Hermite8 {
         }
     }
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
+        psys.time = psys_new.time;
         let (psys_lo, _) = psys.split_at_mut(nact);
         let (psys_new_lo, _) = psys_new.split_at(nact);
         for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
