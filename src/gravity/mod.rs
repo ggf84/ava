@@ -5,8 +5,8 @@ const TILE: usize = 16 / size_of::<Real>();
 
 pub trait Compute<T: ?Sized> {
     type Output;
-    fn compute(&self, psys: &T) -> Self::Output;
-    fn compute_mutual(&self, ipsys: &T, jpsys: &T) -> (Self::Output, Self::Output);
+    fn compute(&self, src: T) -> Self::Output;
+    fn compute_mutual(&self, isrc: T, jsrc: T) -> (Self::Output, Self::Output);
 }
 
 trait ToSoA<T: ?Sized> {
@@ -26,10 +26,10 @@ macro_rules! impl_kernel {
             /// Implements mutual interaction
             fn p2p(
                 &self,
-                ip_src: &$scr_type_soa,
-                ip_dst: &mut $dst_type_soa,
-                jp_src: &$scr_type_soa,
-                jp_dst: &mut $dst_type_soa,
+                ip_src: &[$scr_type_soa],
+                ip_dst: &mut [$dst_type_soa],
+                jp_src: &[$scr_type_soa],
+                jp_dst: &mut [$dst_type_soa],
             );
 
             /// Sequential kernel
@@ -51,11 +51,12 @@ macro_rules! impl_kernel {
 
                 let ni_tiles = (isrc.len() + TILE - 1) / TILE;
                 let nj_tiles = (jsrc.len() + TILE - 1) / TILE;
-                for ii in 0..ni_tiles {
-                    for jj in 0..nj_tiles {
-                        self.p2p(&ip_src[ii], &mut ip_dst[ii], &jp_src[jj], &mut jp_dst[jj]);
-                    }
-                }
+                self.p2p(
+                    &ip_src[..ni_tiles],
+                    &mut ip_dst[..ni_tiles],
+                    &jp_src[..nj_tiles],
+                    &mut jp_dst[..nj_tiles],
+                );
 
                 jdst.from_soa(&jp_src[..], &jp_dst[..]);
                 idst.from_soa(&ip_src[..], &ip_dst[..]);
@@ -141,11 +142,11 @@ where
     loop1(ni, |i| loop1(nj, |j| loop1(nk, |k| f(i, j, k))));
 }
 
-mod acc0;
-mod acc1;
-mod acc2;
-mod acc3;
-mod energy;
+pub mod acc0;
+pub mod acc1;
+pub mod acc2;
+pub mod acc3;
+pub mod energy;
 
 pub use self::acc0::Acc0;
 pub use self::acc1::Acc1;

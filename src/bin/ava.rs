@@ -30,7 +30,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let file = File::create("cluster.txt")?;
     let mut writer = BufWriter::new(file);
-    for p in psys.iter() {
+    for p in psys.attrs.iter() {
         writeln!(
             &mut writer,
             "{} {} {} \
@@ -44,105 +44,97 @@ fn main() -> Result<(), std::io::Error> {
         ParticleSystem::from_model(7 * npart, &model, &mut rng).into_standard_units(0.5, None);
     let psys2 =
         ParticleSystem::from_model(3 * npart, &model, &mut rng).into_standard_units(0.5, None);
-    let ((iacc0_21,), (jacc0_21,)) = Acc0 {}.compute_mutual(psys2.as_slice(), psys1.as_slice());
-    let ((iacc0_12,), (jacc0_12,)) = Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
-    assert!(iacc0_21 == jacc0_12);
-    assert!(iacc0_12 == jacc0_21);
+    let (iacc_12, jacc_12) = Acc0 {}.compute_mutual(psys1.as_ref(), psys2.as_ref());
+    let (iacc_21, jacc_21) = Acc0 {}.compute_mutual(psys2.as_ref(), psys1.as_ref());
+    assert!(iacc_21 == jacc_12);
+    assert!(iacc_12 == jacc_21);
     let mut ftot0 = [0.0; 3];
-    for (i, p) in psys1.iter().enumerate() {
+    for (i, m) in psys1.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * iacc0_12[i][k];
+            ftot0[k] += m * iacc_12.0[i][k];
         }
     }
-    for (j, p) in psys2.iter().enumerate() {
+    for (j, m) in psys2.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * jacc0_12[j][k];
+            ftot0[k] += m * jacc_12.0[j][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
-    eprintln!("iacc0_12: {:?}", &iacc0_12[..2]);
-    eprintln!("jacc0_21: {:?}", &jacc0_21[..2]);
-    eprintln!("jacc0_12: {:?}", &jacc0_12[..2]);
-    eprintln!("iacc0_21: {:?}", &iacc0_21[..2]);
+    eprintln!("iacc_12: {:?}", &iacc_12.0[..2]);
+    eprintln!("jacc_21: {:?}", &jacc_21.0[..2]);
+    eprintln!("jacc_12: {:?}", &jacc_12.0[..2]);
+    eprintln!("iacc_21: {:?}", &iacc_21.0[..2]);
     eprintln!("");
 
-    let (acc0,) = Acc0 {}.compute(psys.as_slice());
+    let acc = Acc0 {}.compute(psys.as_ref());
     let mut ftot0 = [0.0; 3];
-    for (i, p) in psys.iter().enumerate() {
+    for (i, m) in psys.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * acc0[i][k];
+            ftot0[k] += m * acc.0[i][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
-    eprintln!("_acc0: {:?}", &acc0[..2]);
+    eprintln!("acc.0: {:?}", &acc.0[..2]);
     eprintln!("");
 
-    let (acc0, acc1) = Acc1 {}.compute(psys.as_slice());
+    let acc = Acc1 {}.compute(psys.as_ref());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
-    for (i, p) in psys.iter().enumerate() {
+    for (i, m) in psys.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * acc0[i][k];
-            ftot1[k] += p.mass * acc1[i][k];
+            ftot0[k] += m * acc.0[i][k];
+            ftot1[k] += m * acc.1[i][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
     eprintln!("ftot1: {:?}", ftot1);
-    eprintln!("_acc0: {:?}", &acc0[..2]);
-    eprintln!("_acc1: {:?}", &acc1[..2]);
+    eprintln!("acc.0: {:?}", &acc.0[..2]);
+    eprintln!("acc.1: {:?}", &acc.1[..2]);
     eprintln!("");
 
-    for (i, p) in psys.iter_mut().enumerate() {
-        for k in 0..3 {
-            p.acc0[k] = acc0[i][k];
-        }
-    }
-    let (acc0, acc1, acc2) = Acc2 {}.compute(psys.as_slice());
+    psys.attrs.acc0 = acc.0;
+    let acc = Acc2 {}.compute(psys.as_ref());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
-    for (i, p) in psys.iter().enumerate() {
+    for (i, m) in psys.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * acc0[i][k];
-            ftot1[k] += p.mass * acc1[i][k];
-            ftot2[k] += p.mass * acc2[i][k];
+            ftot0[k] += m * acc.0[i][k];
+            ftot1[k] += m * acc.1[i][k];
+            ftot2[k] += m * acc.2[i][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
     eprintln!("ftot1: {:?}", ftot1);
     eprintln!("ftot2: {:?}", ftot2);
-    eprintln!("_acc0: {:?}", &acc0[..2]);
-    eprintln!("_acc1: {:?}", &acc1[..2]);
-    eprintln!("_acc2: {:?}", &acc2[..2]);
+    eprintln!("acc.0: {:?}", &acc.0[..2]);
+    eprintln!("acc.1: {:?}", &acc.1[..2]);
+    eprintln!("acc.2: {:?}", &acc.2[..2]);
     eprintln!("");
 
-    for (i, p) in psys.iter_mut().enumerate() {
-        for k in 0..3 {
-            p.acc0[k] = acc0[i][k];
-            p.acc1[k] = acc1[i][k];
-        }
-    }
-    let (acc0, acc1, acc2, acc3) = Acc3 {}.compute(psys.as_slice());
+    psys.attrs.acc0 = acc.0;
+    psys.attrs.acc1 = acc.1;
+    let acc = Acc3 {}.compute(psys.as_ref());
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
     let mut ftot3 = [0.0; 3];
-    for (i, p) in psys.iter().enumerate() {
+    for (i, m) in psys.attrs.mass.iter().enumerate() {
         for k in 0..3 {
-            ftot0[k] += p.mass * acc0[i][k];
-            ftot1[k] += p.mass * acc1[i][k];
-            ftot2[k] += p.mass * acc2[i][k];
-            ftot3[k] += p.mass * acc3[i][k];
+            ftot0[k] += m * acc.0[i][k];
+            ftot1[k] += m * acc.1[i][k];
+            ftot2[k] += m * acc.2[i][k];
+            ftot3[k] += m * acc.3[i][k];
         }
     }
     eprintln!("ftot0: {:?}", ftot0);
     eprintln!("ftot1: {:?}", ftot1);
     eprintln!("ftot2: {:?}", ftot2);
     eprintln!("ftot3: {:?}", ftot3);
-    eprintln!("_acc0: {:?}", &acc0[..2]);
-    eprintln!("_acc1: {:?}", &acc1[..2]);
-    eprintln!("_acc2: {:?}", &acc2[..2]);
-    eprintln!("_acc3: {:?}", &acc3[..2]);
+    eprintln!("acc.0: {:?}", &acc.0[..2]);
+    eprintln!("acc.1: {:?}", &acc.1[..2]);
+    eprintln!("acc.2: {:?}", &acc.2[..2]);
+    eprintln!("acc.3: {:?}", &acc.3[..2]);
     eprintln!("");
 
     // TODO: put this somewhere as a test.
@@ -150,8 +142,8 @@ fn main() -> Result<(), std::io::Error> {
         let n = psys.len();
         let mut psys_1 = ParticleSystem::new();
         let mut psys_2 = ParticleSystem::new();
-        psys_1.particles = psys.particles[..(n / 3)].to_vec();
-        psys_2.particles = psys.particles[(n / 3)..].to_vec();
+        psys_1.attrs = psys.attrs.slice(0..(n / 3)).to_vec();
+        psys_2.attrs = psys.attrs.slice((n / 3)..n).to_vec();
 
         let (mtot_1, _rcom_1, vcom_1) = psys_1.com_mass_pos_vel();
         let vcom_1 = vcom_1.iter().fold(0.0, |s, v| s + v * v).sqrt();
@@ -166,11 +158,10 @@ fn main() -> Result<(), std::io::Error> {
         let mtot = psys.com_mass();
         // let mtot = mtot_1 + mtot_2;
         let kecom = kecom_1 + kecom_2;
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
-        let (ke_1, pe_1) = Energy::new(mtot_1).energies(psys_1.as_slice());
-        let (ke_2, pe_2) = Energy::new(mtot_2).energies(psys_2.as_slice());
-        let (ke_12, pe_12) =
-            Energy::new(mtot).energies_mutual(psys_1.as_slice(), psys_2.as_slice());
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
+        let (ke_1, pe_1) = Energy::new(mtot_1).energies(psys_1.as_ref());
+        let (ke_2, pe_2) = Energy::new(mtot_2).energies(psys_2.as_ref());
+        let (ke_12, pe_12) = Energy::new(mtot).energies_mutual(psys_1.as_ref(), psys_2.as_ref());
         eprintln!("{:?} {:?}", ke, pe);
         eprintln!("{:?} {:?}", ke_1, pe_1);
         eprintln!("{:?} {:?}", ke_2, pe_2);
@@ -186,9 +177,7 @@ fn main() -> Result<(), std::io::Error> {
     for _ in 0..1 {
         let timer = Instant::now();
         // Pass mtot=1 because here we are not interested in the actual result.
-        Energy::new(1.0).compute(psys.as_slice());
-        // Energy::new(1.0).compute(psys1.as_slice());
-        // Energy::new(1.0).compute(psys2.as_slice());
+        Energy::new(1.0).energies(psys.as_ref());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -199,10 +188,7 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc0 {}.compute(psys.as_slice());
-        // Acc0 {}.compute(psys1.as_slice());
-        // Acc0 {}.compute(psys2.as_slice());
-        // Acc0 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
+        Acc0 {}.compute(psys.as_ref());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -213,10 +199,7 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc1 {}.compute(psys.as_slice());
-        // Acc1 {}.compute(psys1.as_slice());
-        // Acc1 {}.compute(psys2.as_slice());
-        // Acc1 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
+        Acc1 {}.compute(psys.as_ref());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -227,10 +210,7 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc2 {}.compute(psys.as_slice());
-        // Acc2 {}.compute(psys1.as_slice());
-        // Acc2 {}.compute(psys2.as_slice());
-        // Acc2 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
+        Acc2 {}.compute(psys.as_ref());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -241,10 +221,7 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc3 {}.compute(psys.as_slice());
-        // Acc3 {}.compute(psys1.as_slice());
-        // Acc3 {}.compute(psys2.as_slice());
-        // Acc3 {}.compute_mutual(psys1.as_slice(), psys2.as_slice());
+        Acc3 {}.compute(psys.as_ref());
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64

@@ -1,42 +1,43 @@
 use super::{loop1, loop2, loop3, Compute, FromSoA, ToSoA, TILE};
-use crate::{real::Real, sys::Particle};
-use serde_derive::{Deserialize, Serialize};
+use crate::{real::Real, sys::ParticleSystem};
 use soa_derive::StructOfArray;
 
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+struct Derivs<T>([T; 3], [T; 3]);
+
 #[repr(align(16))]
-#[derive(Debug, Default, Copy, Clone)]
-struct EnergySrcSoA {
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+struct SrcSoA {
     eps: [Real; TILE],
     mass: [Real; TILE],
-    rdot0: [[Real; TILE]; 3],
-    rdot1: [[Real; TILE]; 3],
+    rdot: Derivs<[Real; TILE]>,
 }
 
 #[repr(align(16))]
-#[derive(Debug, Default, Copy, Clone)]
-struct EnergyDstSoA {
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+struct DstSoA {
     ekin: [Real; TILE],
     epot: [Real; TILE],
 }
 
-#[derive(Debug, Default, PartialEq, StructOfArray)]
-#[soa_derive = "Debug, PartialEq"]
-struct EnergySrc {
+#[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
+#[soa_derive = "Clone, Debug, PartialEq"]
+pub struct Src {
     eps: Real,
     mass: Real,
     rdot0: [Real; 3],
     rdot1: [Real; 3],
 }
 
-#[derive(Debug, Default, PartialEq, StructOfArray)]
-#[soa_derive = "Debug, PartialEq"]
-struct EnergyDst {
+#[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
+#[soa_derive = "Clone, Debug, PartialEq"]
+pub struct Dst {
     ekin: Real,
     epot: Real,
 }
 
-impl<'a> ToSoA<[EnergySrcSoA]> for EnergySrcSlice<'a> {
-    fn to_soa(&self, ps_src: &mut [EnergySrcSoA]) {
+impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
+    fn to_soa(&self, ps_src: &mut [SrcSoA]) {
         let n = self.len();
         let mut jj = 0;
         for p_src in ps_src.iter_mut() {
@@ -44,8 +45,8 @@ impl<'a> ToSoA<[EnergySrcSoA]> for EnergySrcSlice<'a> {
                 if jj < n {
                     p_src.eps[j] = self.eps[jj];
                     p_src.mass[j] = self.mass[jj];
-                    loop1(3, |k| p_src.rdot0[k][j] = self.rdot0[jj][k]);
-                    loop1(3, |k| p_src.rdot1[k][j] = self.rdot1[jj][k]);
+                    loop1(3, |k| p_src.rdot.0[k][j] = self.rdot0[jj][k]);
+                    loop1(3, |k| p_src.rdot.1[k][j] = self.rdot1[jj][k]);
                     jj += 1;
                 }
             }
@@ -53,8 +54,8 @@ impl<'a> ToSoA<[EnergySrcSoA]> for EnergySrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA<[EnergySrcSoA], [EnergyDstSoA]> for EnergyDstSliceMut<'a> {
-    fn from_soa(&mut self, ps_src: &[EnergySrcSoA], ps_dst: &[EnergyDstSoA]) {
+impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
+    fn from_soa(&mut self, ps_src: &[SrcSoA], ps_dst: &[DstSoA]) {
         let n = self.len();
         let mut jj = 0;
         for (_p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
@@ -69,143 +70,126 @@ impl<'a> FromSoA<[EnergySrcSoA], [EnergyDstSoA]> for EnergyDstSliceMut<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Energy {
     mtot: Real,
 }
-impl_kernel!(
-    EnergySrcSlice,
-    EnergyDstSliceMut,
-    EnergySrcSoA,
-    EnergyDstSoA,
-    64,
-);
+impl_kernel!(SrcSlice, DstSliceMut, SrcSoA, DstSoA, 64);
 
 impl Kernel for Energy {
     // flop count: 28
     fn p2p(
         &self,
-        ip_src: &EnergySrcSoA,
-        ip_dst: &mut EnergyDstSoA,
-        jp_src: &EnergySrcSoA,
-        jp_dst: &mut EnergyDstSoA,
+        ip_src: &[SrcSoA],
+        ip_dst: &mut [DstSoA],
+        jp_src: &[SrcSoA],
+        jp_dst: &mut [DstSoA],
     ) {
-        let mut drdot0: [[[Real; TILE]; TILE]; 3] = Default::default();
-        let mut drdot1: [[[Real; TILE]; TILE]; 3] = Default::default();
-        let mut s00: [[Real; TILE]; TILE] = Default::default();
-        let mut s11: [[Real; TILE]; TILE] = Default::default();
-        let mut rinv1: [[Real; TILE]; TILE] = Default::default();
-        let mut rinv2: [[Real; TILE]; TILE] = Default::default();
-        let mut mm: [[Real; TILE]; TILE] = Default::default();
-        let mut mmv2: [[Real; TILE]; TILE] = Default::default();
-        let mut mm_r1: [[Real; TILE]; TILE] = Default::default();
+        for (ip_src, ip_dst) in ip_src.iter().zip(ip_dst.iter_mut()) {
+            for (jp_src, jp_dst) in jp_src.iter().zip(jp_dst.iter_mut()) {
+                let mut drdot: Derivs<[[Real; TILE]; TILE]> = Default::default();
+                let mut s00: [[Real; TILE]; TILE] = Default::default();
+                let mut s11: [[Real; TILE]; TILE] = Default::default();
+                let mut rinv1: [[Real; TILE]; TILE] = Default::default();
+                let mut rinv2: [[Real; TILE]; TILE] = Default::default();
+                let mut mm: [[Real; TILE]; TILE] = Default::default();
+                let mut mmv2: [[Real; TILE]; TILE] = Default::default();
+                let mut mm_r1: [[Real; TILE]; TILE] = Default::default();
 
-        loop3(3, TILE, TILE, |k, i, j| {
-            drdot0[k][i][j] = ip_src.rdot0[k][j ^ i] - jp_src.rdot0[k][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            drdot1[k][i][j] = ip_src.rdot1[k][j ^ i] - jp_src.rdot1[k][j];
-        });
+                loop3(3, TILE, TILE, |k, i, j| {
+                    drdot.0[k][i][j] = ip_src.rdot.0[k][j ^ i] - jp_src.rdot.0[k][j];
+                });
+                loop3(3, TILE, TILE, |k, i, j| {
+                    drdot.1[k][i][j] = ip_src.rdot.1[k][j ^ i] - jp_src.rdot.1[k][j];
+                });
 
-        loop2(TILE, TILE, |i, j| {
-            mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            s00[i][j] = ip_src.eps[j ^ i] * jp_src.eps[j];
-        });
+                loop2(TILE, TILE, |i, j| {
+                    mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
+                });
+                loop2(TILE, TILE, |i, j| {
+                    s00[i][j] = ip_src.eps[j ^ i] * jp_src.eps[j];
+                });
 
-        loop3(3, TILE, TILE, |k, i, j| {
-            s00[i][j] += drdot0[k][i][j] * drdot0[k][i][j];
-        });
-        loop3(3, TILE, TILE, |k, i, j| {
-            s11[i][j] += drdot1[k][i][j] * drdot1[k][i][j];
-        });
+                loop3(3, TILE, TILE, |k, i, j| {
+                    s00[i][j] += drdot.0[k][i][j] * drdot.0[k][i][j];
+                });
+                loop3(3, TILE, TILE, |k, i, j| {
+                    s11[i][j] += drdot.1[k][i][j] * drdot.1[k][i][j];
+                });
 
-        loop2(TILE, TILE, |i, j| {
-            mmv2[i][j] = mm[i][j] * s11[i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            rinv2[i][j] = s00[i][j].recip();
-        });
-        loop2(TILE, TILE, |i, j| {
-            rinv1[i][j] = rinv2[i][j].sqrt();
-        });
-        loop2(TILE, TILE, |i, j| {
-            mm_r1[i][j] = mm[i][j] * rinv1[i][j];
-        });
+                loop2(TILE, TILE, |i, j| {
+                    mmv2[i][j] = mm[i][j] * s11[i][j];
+                });
+                loop2(TILE, TILE, |i, j| {
+                    rinv2[i][j] = s00[i][j].recip();
+                });
+                loop2(TILE, TILE, |i, j| {
+                    rinv1[i][j] = rinv2[i][j].sqrt();
+                });
+                loop2(TILE, TILE, |i, j| {
+                    mm_r1[i][j] = mm[i][j] * rinv1[i][j];
+                });
 
-        loop2(TILE, TILE, |i, j| {
-            ip_dst.ekin[j ^ i] += mmv2[i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            jp_dst.ekin[j] += mmv2[i][j];
-        });
+                loop2(TILE, TILE, |i, j| {
+                    ip_dst.ekin[j ^ i] += mmv2[i][j];
+                });
+                loop2(TILE, TILE, |i, j| {
+                    jp_dst.ekin[j] += mmv2[i][j];
+                });
 
-        loop2(TILE, TILE, |i, j| {
-            ip_dst.epot[j ^ i] -= mm_r1[i][j];
-        });
-        loop2(TILE, TILE, |i, j| {
-            jp_dst.epot[j] -= mm_r1[i][j];
-        });
+                loop2(TILE, TILE, |i, j| {
+                    ip_dst.epot[j ^ i] -= mm_r1[i][j];
+                });
+                loop2(TILE, TILE, |i, j| {
+                    jp_dst.epot[j] -= mm_r1[i][j];
+                });
+            }
+        }
     }
 }
 
-impl Compute<[Particle]> for Energy {
-    type Output = (Vec<Real>, Vec<Real>);
-    fn compute(&self, psys: &[Particle]) -> Self::Output {
-        let mut src = EnergySrcVec::with_capacity(psys.len());
-        let mut dst = EnergyDstVec::with_capacity(psys.len());
-        for p in psys.iter() {
-            src.push(EnergySrc {
-                eps: p.eps,
-                mass: p.mass,
-                rdot0: p.pos,
-                rdot1: p.vel,
-            });
-            dst.push(Default::default());
+impl<'a, 'b: 'a> From<&'b ParticleSystem> for SrcSlice<'a> {
+    fn from(ps: &'b ParticleSystem) -> Self {
+        SrcSlice {
+            eps: &ps.attrs.eps[..],
+            mass: &ps.attrs.mass[..],
+            rdot0: &ps.attrs.pos[..],
+            rdot1: &ps.attrs.vel[..],
         }
-
-        self.triangle(&src.as_slice(), &mut dst.as_mut_slice());
-
-        (dst.ekin, dst.epot)
     }
-    fn compute_mutual(
-        &self,
-        ipsys: &[Particle],
-        jpsys: &[Particle],
-    ) -> (Self::Output, Self::Output) {
-        let mut isrc = EnergySrcVec::with_capacity(ipsys.len());
-        let mut idst = EnergyDstVec::with_capacity(ipsys.len());
-        for p in ipsys.iter() {
-            isrc.push(EnergySrc {
-                eps: p.eps,
-                mass: p.mass,
-                rdot0: p.pos,
-                rdot1: p.vel,
-            });
-            idst.push(Default::default());
-        }
+}
 
-        let mut jsrc = EnergySrcVec::with_capacity(jpsys.len());
-        let mut jdst = EnergyDstVec::with_capacity(jpsys.len());
-        for p in jpsys.iter() {
-            jsrc.push(EnergySrc {
-                eps: p.eps,
-                mass: p.mass,
-                rdot0: p.pos,
-                rdot1: p.vel,
-            });
-            jdst.push(Default::default());
-        }
+impl<S: Into<SrcSlice<'_>>> Compute<S> for Energy {
+    type Output = (Vec<Real>, Vec<Real>);
+    fn compute(&self, src: S) -> Self::Output {
+        let src = src.into();
+        let mut ke = vec![Default::default(); src.len()];
+        let mut pe = vec![Default::default(); src.len()];
+        let mut dst = DstSliceMut {
+            ekin: &mut ke[..],
+            epot: &mut pe[..],
+        };
 
-        self.rectangle(
-            &isrc.as_slice(),
-            &mut idst.as_mut_slice(),
-            &jsrc.as_slice(),
-            &mut jdst.as_mut_slice(),
-        );
+        self.triangle(&src, &mut dst);
+        (ke, pe)
+    }
+    fn compute_mutual(&self, isrc: S, jsrc: S) -> (Self::Output, Self::Output) {
+        let isrc = isrc.into();
+        let jsrc = jsrc.into();
+        let mut ike = vec![Default::default(); isrc.len()];
+        let mut ipe = vec![Default::default(); isrc.len()];
+        let mut jke = vec![Default::default(); jsrc.len()];
+        let mut jpe = vec![Default::default(); jsrc.len()];
+        let mut idst = DstSliceMut {
+            ekin: &mut ike[..],
+            epot: &mut ipe[..],
+        };
+        let mut jdst = DstSliceMut {
+            ekin: &mut jke[..],
+            epot: &mut jpe[..],
+        };
 
-        ((idst.ekin, idst.epot), (jdst.ekin, jdst.epot))
+        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
+        ((ike, ipe), (jke, jpe))
     }
 }
 
@@ -225,8 +209,8 @@ impl Energy {
     ///
     /// and, \\[ PE_{tot} = PE \\]
     ///
-    pub fn energies(&self, psys: &[Particle]) -> (Real, Real) {
-        let (ke, pe) = self.compute(psys);
+    pub fn energies<'a, S: Into<SrcSlice<'a>>>(&self, src: S) -> (Real, Real) {
+        let (ke, pe) = self.compute(src);
 
         let pe = pe.iter().sum::<Real>() * 0.5;
         let ke = ke.iter().sum::<Real>() * 0.25 / self.mtot;
@@ -246,8 +230,8 @@ impl Energy {
     ///
     /// and, \\[ PE_{tot} = PE_{A} + PE_{B} + PE_{AB} \\]
     ///
-    pub fn energies_mutual(&self, ipsys: &[Particle], jpsys: &[Particle]) -> (Real, Real) {
-        let ((ike, ipe), (jke, jpe)) = self.compute_mutual(ipsys, jpsys);
+    pub fn energies_mutual<'a, S: Into<SrcSlice<'a>>>(&self, isrc: S, jsrc: S) -> (Real, Real) {
+        let ((ike, ipe), (jke, jpe)) = self.compute_mutual(isrc, jsrc);
 
         let ipe = ipe.iter().sum::<Real>() * 0.5;
         let ike = ike.iter().sum::<Real>() * 0.25 / self.mtot;
@@ -273,13 +257,12 @@ mod bench {
 
     const NTILES: usize = 256 / TILE;
 
-    impl Distribution<EnergySrcSoA> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EnergySrcSoA {
-            EnergySrcSoA {
+    impl Distribution<SrcSoA> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SrcSoA {
+            SrcSoA {
                 eps: rng.gen(),
                 mass: rng.gen(),
-                rdot0: rng.gen(),
-                rdot1: rng.gen(),
+                rdot: Derivs(rng.gen(), rng.gen()),
             }
         }
     }
@@ -289,17 +272,18 @@ mod bench {
         let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
-            let mut ip_src: [EnergySrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut ip_dst: [EnergyDstSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_src: [EnergySrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_dst: [EnergyDstSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_src: [SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut ip_dst: [DstSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_src: [SrcSoA; NTILES] = [Default::default(); NTILES];
+            let mut jp_dst: [DstSoA; NTILES] = [Default::default(); NTILES];
             ip_src.iter_mut().for_each(|p| *p = rng.gen());
             jp_src.iter_mut().for_each(|p| *p = rng.gen());
-            for ii in 0..NTILES {
-                for jj in 0..NTILES {
-                    kernel.p2p(&ip_src[ii], &mut ip_dst[ii], &jp_src[jj], &mut jp_dst[jj]);
-                }
-            }
+            kernel.p2p(
+                &ip_src[..NTILES],
+                &mut ip_dst[..NTILES],
+                &jp_src[..NTILES],
+                &mut jp_dst[..NTILES],
+            );
             (ip_dst, jp_dst)
         });
     }

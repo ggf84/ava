@@ -1,7 +1,7 @@
-mod particles;
+mod attributes;
 mod system;
 
-pub use self::particles::Particle;
-pub use self::system::ParticleSystem;
+pub use self::attributes::*;
+pub use self::system::*;
 
 // -- end of file --

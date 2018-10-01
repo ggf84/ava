@@ -67,13 +67,13 @@ impl TimeStepScheme {
     fn match_dt(&self, psys: &mut ParticleSystem) -> Real {
         match *self {
             TimeStepScheme::Constant { dt } => {
-                psys.set_shared_dt(dt);
+                psys.attrs.dt.iter_mut().for_each(|idt| *idt = dt);
                 dt
             }
             TimeStepScheme::Adaptive { shared } => {
-                let dt = psys.particles[0].dt;
+                let dt = psys.attrs.dt[0];
                 if shared {
-                    psys.set_shared_dt(dt);
+                    psys.attrs.dt.iter_mut().for_each(|idt| *idt = dt);
                 }
                 dt
             }
@@ -179,7 +179,7 @@ struct Logger {
 impl Logger {
     fn new(psys: &ParticleSystem) -> Self {
         let mtot = psys.com_mass();
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
         let te = ke + pe;
         let te_0 = te;
         let te_n = te;
@@ -224,7 +224,7 @@ impl Logger {
         let (mtot, rcom, vcom) = psys.com_mass_pos_vel();
         let rcom = rcom.iter().fold(0.0, |s, r| s + r * r).sqrt();
         let vcom = vcom.iter().fold(0.0, |s, v| s + v * v).sqrt();
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_slice());
+        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
         let te = ke + pe;
         let ve = 2.0 * ke + pe;
         let err_rel = (te - self.te_n) / self.te_n;

@@ -1,17 +1,18 @@
 use super::{to_power_of_two, Counter, Evolver, TimeStepScheme};
 use crate::{
-    gravity::{Acc1, Acc2, Acc3, Compute},
+    gravity::{Acc0, Acc1, Acc2, Acc3, Compute},
     real::Real,
     sys::ParticleSystem,
 };
 use serde_derive::{Deserialize, Serialize};
+use soa_derive::{soa_zip, soa_zip_impl};
 
 fn count_nact(dt: Real, psys: &ParticleSystem) -> usize {
     let mut nact = 0;
     let tnew = psys.time + dt;
-    for p in psys.iter() {
+    for (tnow, dt) in soa_zip!(&psys.attrs, [tnow, dt]) {
         // note: assuming psys has been sorted by dt.
-        if (p.tnow + p.dt) > tnew {
+        if (tnow + dt) > tnew {
             break;
         } else {
             nact += 1
@@ -25,9 +26,9 @@ pub(super) trait Hermite {
     fn npec(&self) -> u8;
     fn tstep_scheme(&self) -> &TimeStepScheme;
     fn init_acc_dt(&self, psys: &mut ParticleSystem);
-    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem);
-    fn ecorrect(&self, nact: usize, psys: &ParticleSystem, psys_new: &mut ParticleSystem);
-    fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem);
+    fn predict(&self, dt: Real, psys: &mut ParticleSystem);
+    fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem);
+    fn commit(&self, nact: usize, psys: &mut ParticleSystem);
 
     /// Set dt <= dtmax and sort by time-steps.
     fn set_dtmax_and_sort_by_dt(&self, mut dtmax: Real, nact: usize, psys: &mut ParticleSystem) {
@@ -37,13 +38,15 @@ pub(super) trait Hermite {
             dtmax *= 0.5;
         }
 
-        let (psys_lo, _) = psys.split_at_mut(nact);
-
         // set time-step limits dt <= dtmax
-        psys_lo.iter_mut().for_each(|p| p.dt = dtmax.min(p.dt));
+        psys.attrs.dt[..nact]
+            .iter_mut()
+            .for_each(|dt| *dt = dtmax.min(*dt));
 
         // sort by dt
-        psys_lo.sort_by(|a, b| (a.dt).partial_cmp(&b.dt).unwrap());
+        let mut indices: Vec<_> = (0..nact).collect();
+        indices.sort_by(|&i, &j| psys.attrs.dt[i].partial_cmp(&psys.attrs.dt[j]).unwrap());
+        psys.attrs.apply_permutation(&indices);
     }
 }
 
@@ -61,12 +64,11 @@ impl<T: Hermite> Evolver for T {
         while psys.time < tend {
             let dt = self.tstep_scheme().match_dt(psys);
             let nact = count_nact(dt, psys);
-            let mut psys_new = psys.clone();
-            self.predict(dt, psys, &mut psys_new);
+            self.predict(dt, psys);
             for _ in 0..self.npec() {
-                self.ecorrect(nact, psys, &mut psys_new);
+                self.ecorrect(nact, psys);
             }
-            self.commit(nact, psys, &psys_new);
+            self.commit(nact, psys);
             self.set_dtmax_and_sort_by_dt(dtmax, nact, psys);
             counter.isteps += nact as u64;
             counter.bsteps += 1;
@@ -78,7 +80,6 @@ impl<T: Hermite> Evolver for T {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite4 {
-    kernel: Acc1,
     tstep_scheme: TimeStepScheme,
     eta: Real,
     npec: u8,
@@ -86,7 +87,6 @@ pub struct Hermite4 {
 impl Hermite4 {
     pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite4 {
-            kernel: Acc1 {},
             tstep_scheme,
             eta,
             npec,
@@ -103,61 +103,105 @@ impl Hermite for Hermite4 {
         &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        let tnow = psys.time;
-        let iiacc = self.kernel.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-        }
+        let acc = Acc0 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
         // If all velocities are initially zero, then acc1 == 0. This means that
         // in order to have a robust value for dt we need to compute acc2 too.
-        let iiacc = Acc2 {}.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-            p.acc2 = iiacc.2[i];
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
+        let acc = Acc2 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
+        psys.attrs.acc1 = acc.1;
+        psys.attrs.acc2 = acc.2;
+
+        let time = psys.time;
+
+        for (dt, tnow, &acc0, &acc1, &acc2) in
+            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2])
+        {
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
 
             let u = a0;
             let l = a1 + (a0 * a2).sqrt();
 
-            let dt = 0.125 * self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dt);
-            p.tnow = tnow;
+            let dtr = 0.125 * self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
+            *tnow = time;
         }
     }
-    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        psys_new.time = psys.time + dt;
-        let tnew = psys_new.time;
-        for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
-            let dt = tnew - p.tnow;
+    fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
+        psys.time += dt;
+
+        for (&tnow, &pos, &vel, &acc0, &acc1, new_tnow, new_pos, new_vel) in soa_zip!(
+            &mut psys.attrs,
+            [tnow, pos, vel, acc0, acc1, mut new_tnow, mut new_pos, mut new_vel]
+        ) {
+            let dt = psys.time - tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
 
-            pnew.tnow = p.tnow + dt;
+            *new_tnow = tnow + dt;
             for k in 0..3 {
-                let dpos = h3 * (p.acc1[k]);
-                let dpos = h2 * (p.acc0[k] + dpos);
-                let dpos = h1 * (p.vel[k] + dpos);
-                pnew.pos[k] = p.pos[k] + dpos;
+                let dpos = h3 * (acc1[k]);
+                let dpos = h2 * (acc0[k] + dpos);
+                let dpos = h1 * (vel[k] + dpos);
+                new_pos[k] = pos[k] + dpos;
 
-                let dvel = h2 * (p.acc1[k]);
-                let dvel = h1 * (p.acc0[k] + dvel);
-                pnew.vel[k] = p.vel[k] + dvel;
+                let dvel = h2 * (acc1[k]);
+                let dvel = h1 * (acc0[k] + dvel);
+                new_vel[k] = vel[k] + dvel;
             }
         }
     }
-    fn ecorrect(&self, nact: usize, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        let (psys_lo, _) = psys.split_at(nact);
-        let (psys_new_lo, psys_new_hi) = psys_new.split_at_mut(nact);
-        let acc_new_lo = self.kernel.compute(&psys_new_lo);
-        let (acc_new_hi, _) = self.kernel.compute_mutual(&psys_new_lo, &psys_new_hi);
-        for (i, (p, pnew)) in psys_lo.iter().zip(psys_new_lo.iter_mut()).enumerate() {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
+        use crate::gravity::acc1::SrcSlice;
+
+        let kernel = Acc1 {};
+        let new_acc_lo = kernel.compute(SrcSlice {
+            eps: &psys.attrs.eps[..nact],
+            mass: &psys.attrs.mass[..nact],
+            rdot0: &psys.attrs.new_pos[..nact],
+            rdot1: &psys.attrs.new_vel[..nact],
+        });
+        let (new_acc_hi, _) = kernel.compute_mutual(
+            SrcSlice {
+                eps: &psys.attrs.eps[..nact],
+                mass: &psys.attrs.mass[..nact],
+                rdot0: &psys.attrs.new_pos[..nact],
+                rdot1: &psys.attrs.new_vel[..nact],
+            },
+            SrcSlice {
+                eps: &psys.attrs.eps[nact..],
+                mass: &psys.attrs.mass[nact..],
+                rdot0: &psys.attrs.new_pos[nact..],
+                rdot1: &psys.attrs.new_vel[nact..],
+            },
+        );
+        psys.attrs.new_acc0[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.0.iter().flatten())
+            .zip(new_acc_hi.0.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc1[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.1.iter().flatten())
+            .zip(new_acc_hi.1.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+
+        for (&dt, &pos, &vel, &acc0, &acc1, new_pos, new_vel, new_acc0, new_acc1) in soa_zip!(
+            &mut psys.attrs,
+            [dt, pos, vel, acc0, acc1, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1]
+        )
+        .take(nact)
+        {
+            let h = dt * 0.5;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -166,26 +210,24 @@ impl Hermite for Hermite4 {
             let d1 = c1 * (1.0 / 3.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc_new_lo.0[i][k] + acc_new_hi.0[i][k];
-                pnew.acc1[k] = acc_new_lo.1[i][k] + acc_new_hi.1[i][k];
+                let a0p = d0 * (new_acc0[k] + acc0[k]);
+                let a1m = d1 * (new_acc1[k] - acc1[k]);
+                new_vel[k] = vel[k] + dt * (a0p - a1m);
 
-                let a0p = d0 * (pnew.acc0[k] + p.acc0[k]);
-                let a1m = d1 * (pnew.acc1[k] - p.acc1[k]);
-                pnew.vel[k] = p.vel[k] + dt * (a0p - a1m);
-
-                let v0p = d0 * (pnew.vel[k] + p.vel[k]);
-                let v1m = d1 * (pnew.acc0[k] - p.acc0[k]);
-                pnew.pos[k] = p.pos[k] + dt * (v0p - v1m);
+                let v0p = d0 * (new_vel[k] + vel[k]);
+                let v1m = d1 * (new_acc0[k] - acc0[k]);
+                new_pos[k] = pos[k] + dt * (v0p - v1m);
             }
         }
     }
-    fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
-        psys.time = psys_new.time;
-        let (psys_lo, _) = psys.split_at_mut(nact);
-        let (psys_new_lo, _) = psys_new.split_at(nact);
-        for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
+        for (dt, tnow, pos, vel, acc0, acc1, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1) in soa_zip!(
+            &mut psys.attrs,
+            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, new_tnow, new_pos, new_vel, new_acc0, new_acc1]
+        )
+        .take(nact)
+        {
+            let h = *dt * 0.5;
             let hinv = 1.0 / h;
 
             let c0 = 0.5;
@@ -195,13 +237,13 @@ impl Hermite for Hermite4 {
             let s2 = s1 * (2.0 * hinv);
             let s3 = s2 * (3.0 * hinv);
 
-            let mut acc2 = [0.0; 3];
-            let mut acc3 = [0.0; 3];
+            let mut _acc2 = [0.0; 3];
+            let mut _acc3 = [0.0; 3];
             for k in 0..3 {
-                // let a0p = c0 * (pnew.acc0[k] + p.acc0[k]);
-                let a0m = c0 * (pnew.acc0[k] - p.acc0[k]);
-                let a1p = c1 * (pnew.acc1[k] + p.acc1[k]);
-                let a1m = c1 * (pnew.acc1[k] - p.acc1[k]);
+                // let a0p = c0 * (new_acc0[k] + acc0[k]);
+                let a0m = c0 * (new_acc0[k] - acc0[k]);
+                let a1p = c1 * (new_acc1[k] + acc1[k]);
+                let a1m = c1 * (new_acc1[k] - acc1[k]);
 
                 let a2mid = (1.0 / 2.0) * a1m;
                 let a3mid = (1.0 / 2.0) * (a1p - a0m);
@@ -209,28 +251,28 @@ impl Hermite for Hermite4 {
                 let a2 = a2mid + 3.0 * a3mid;
                 let a3 = a3mid;
 
-                acc2[k] = s2 * a2;
-                acc3[k] = s3 * a3;
+                _acc2[k] = s2 * a2;
+                _acc3[k] = s3 * a3;
             }
 
             // Commit to the new state
-            p.tnow = pnew.tnow;
-            p.pos = pnew.pos;
-            p.vel = pnew.vel;
-            p.acc0 = pnew.acc0;
-            p.acc1 = pnew.acc1;
+            *tnow = new_tnow;
+            *pos = new_pos;
+            *vel = new_vel;
+            *acc0 = new_acc0;
+            *acc1 = new_acc1;
 
             // Update time-steps
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = _acc2.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = _acc3.iter().fold(0.0, |s, v| s + v * v);
 
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
 
-            let dtnew = self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dtnew);
+            let dtr = self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
         }
     }
 }
@@ -239,7 +281,6 @@ impl Hermite for Hermite4 {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite6 {
-    kernel: Acc2,
     tstep_scheme: TimeStepScheme,
     eta: Real,
     npec: u8,
@@ -247,7 +288,6 @@ pub struct Hermite6 {
 impl Hermite6 {
     pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite6 {
-            kernel: Acc2 {},
             tstep_scheme,
             eta,
             npec,
@@ -264,72 +304,126 @@ impl Hermite for Hermite6 {
         &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        let tnow = psys.time;
-        let iiacc = self.kernel.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-            p.acc2 = iiacc.2[i];
-        }
-        let iiacc = self.kernel.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-            p.acc2 = iiacc.2[i];
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = a1 * (a2 / a0); // p.acc3.iter().fold(0.0, |s, v| s + v * v);
+        let acc = Acc0 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
+        let acc = Acc2 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
+        psys.attrs.acc1 = acc.1;
+        psys.attrs.acc2 = acc.2;
+
+        let time = psys.time;
+
+        for (dt, tnow, &acc0, &acc1, &acc2) in
+            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2])
+        {
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = a1 * (a2 / a0); // acc3.iter().fold(0.0, |s, v| s + v * v);
 
             let u = a1 + (a0 * a2).sqrt();
             let l = a2 + (a1 * a3).sqrt();
 
-            let dt = 0.125 * self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dt);
-            p.tnow = tnow;
+            let dtr = 0.125 * self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
+            *tnow = time;
         }
     }
-    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        psys_new.time = psys.time + dt;
-        let tnew = psys_new.time;
-        for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
-            let dt = tnew - p.tnow;
+    fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
+        psys.time += dt;
+
+        for (&tnow, &pos, &vel, &acc0, &acc1, &acc2, &acc3, new_tnow, new_pos, new_vel, new_acc0) in soa_zip!(
+            &mut psys.attrs,
+            [tnow, pos, vel, acc0, acc1, acc2, acc3, mut new_tnow, mut new_pos, mut new_vel, mut new_acc0]
+        ) {
+            let dt = psys.time - tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
             let h4 = dt * (1.0 / 4.0);
             let h5 = dt * (1.0 / 5.0);
 
-            pnew.tnow = p.tnow + dt;
+            *new_tnow = tnow + dt;
             for k in 0..3 {
-                let dpos = h5 * (p.acc3[k]);
-                let dpos = h4 * (p.acc2[k] + dpos);
-                let dpos = h3 * (p.acc1[k] + dpos);
-                let dpos = h2 * (p.acc0[k] + dpos);
-                let dpos = h1 * (p.vel[k] + dpos);
-                pnew.pos[k] = p.pos[k] + dpos;
+                let dpos = h5 * (acc3[k]);
+                let dpos = h4 * (acc2[k] + dpos);
+                let dpos = h3 * (acc1[k] + dpos);
+                let dpos = h2 * (acc0[k] + dpos);
+                let dpos = h1 * (vel[k] + dpos);
+                new_pos[k] = pos[k] + dpos;
 
-                let dvel = h4 * (p.acc3[k]);
-                let dvel = h3 * (p.acc2[k] + dvel);
-                let dvel = h2 * (p.acc1[k] + dvel);
-                let dvel = h1 * (p.acc0[k] + dvel);
-                pnew.vel[k] = p.vel[k] + dvel;
+                let dvel = h4 * (acc3[k]);
+                let dvel = h3 * (acc2[k] + dvel);
+                let dvel = h2 * (acc1[k] + dvel);
+                let dvel = h1 * (acc0[k] + dvel);
+                new_vel[k] = vel[k] + dvel;
 
-                let dacc0 = h3 * (p.acc3[k]);
-                let dacc0 = h2 * (p.acc2[k] + dacc0);
-                let dacc0 = h1 * (p.acc1[k] + dacc0);
-                pnew.acc0[k] = p.acc0[k] + dacc0;
+                let dacc0 = h3 * (acc3[k]);
+                let dacc0 = h2 * (acc2[k] + dacc0);
+                let dacc0 = h1 * (acc1[k] + dacc0);
+                new_acc0[k] = acc0[k] + dacc0;
             }
         }
     }
-    fn ecorrect(&self, nact: usize, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        let (psys_lo, _) = psys.split_at(nact);
-        let (psys_new_lo, psys_new_hi) = psys_new.split_at_mut(nact);
-        let acc_new_lo = self.kernel.compute(&psys_new_lo);
-        let (acc_new_hi, _) = self.kernel.compute_mutual(&psys_new_lo, &psys_new_hi);
-        for (i, (p, pnew)) in psys_lo.iter().zip(psys_new_lo.iter_mut()).enumerate() {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
+        use crate::gravity::acc2::SrcSlice;
+
+        let kernel = Acc2 {};
+        let new_acc_lo = kernel.compute(SrcSlice {
+            eps: &psys.attrs.eps[..nact],
+            mass: &psys.attrs.mass[..nact],
+            rdot0: &psys.attrs.new_pos[..nact],
+            rdot1: &psys.attrs.new_vel[..nact],
+            rdot2: &psys.attrs.new_acc0[..nact],
+        });
+        let (new_acc_hi, _) = kernel.compute_mutual(
+            SrcSlice {
+                eps: &psys.attrs.eps[..nact],
+                mass: &psys.attrs.mass[..nact],
+                rdot0: &psys.attrs.new_pos[..nact],
+                rdot1: &psys.attrs.new_vel[..nact],
+                rdot2: &psys.attrs.new_acc0[..nact],
+            },
+            SrcSlice {
+                eps: &psys.attrs.eps[nact..],
+                mass: &psys.attrs.mass[nact..],
+                rdot0: &psys.attrs.new_pos[nact..],
+                rdot1: &psys.attrs.new_vel[nact..],
+                rdot2: &psys.attrs.new_acc0[nact..],
+            },
+        );
+        psys.attrs.new_acc0[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.0.iter().flatten())
+            .zip(new_acc_hi.0.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc1[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.1.iter().flatten())
+            .zip(new_acc_hi.1.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc2[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.2.iter().flatten())
+            .zip(new_acc_hi.2.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+
+        for (&dt, &pos, &vel, &acc0, &acc1, &acc2, new_pos, new_vel, new_acc0, new_acc1, new_acc2) in soa_zip!(
+            &mut psys.attrs,
+            [dt, pos, vel, acc0, acc1, acc2, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1, mut new_acc2]
+        )
+        .take(nact)
+        {
+            let h = dt * 0.5;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -340,29 +434,26 @@ impl Hermite for Hermite6 {
             let d2 = c2 * (2.0 / 15.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc_new_lo.0[i][k] + acc_new_hi.0[i][k];
-                pnew.acc1[k] = acc_new_lo.1[i][k] + acc_new_hi.1[i][k];
-                pnew.acc2[k] = acc_new_lo.2[i][k] + acc_new_hi.2[i][k];
+                let a0p = d0 * (new_acc0[k] + acc0[k]);
+                let a1m = d1 * (new_acc1[k] - acc1[k]);
+                let a2p = d2 * (new_acc2[k] + acc2[k]);
+                new_vel[k] = vel[k] + dt * (a0p - (a1m - a2p));
 
-                let a0p = d0 * (pnew.acc0[k] + p.acc0[k]);
-                let a1m = d1 * (pnew.acc1[k] - p.acc1[k]);
-                let a2p = d2 * (pnew.acc2[k] + p.acc2[k]);
-                pnew.vel[k] = p.vel[k] + dt * (a0p - (a1m - a2p));
-
-                let v0p = d0 * (pnew.vel[k] + p.vel[k]);
-                let v1m = d1 * (pnew.acc0[k] - p.acc0[k]);
-                let v2p = d2 * (pnew.acc1[k] + p.acc1[k]);
-                pnew.pos[k] = p.pos[k] + dt * (v0p - (v1m - v2p));
+                let v0p = d0 * (new_vel[k] + vel[k]);
+                let v1m = d1 * (new_acc0[k] - acc0[k]);
+                let v2p = d2 * (new_acc1[k] + acc1[k]);
+                new_pos[k] = pos[k] + dt * (v0p - (v1m - v2p));
             }
         }
     }
-    fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
-        psys.time = psys_new.time;
-        let (psys_lo, _) = psys.split_at_mut(nact);
-        let (psys_new_lo, _) = psys_new.split_at(nact);
-        for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
+        for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2) in soa_zip!(
+            &mut psys.attrs,
+            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, mut acc2, mut acc3, new_tnow, new_pos, new_vel, new_acc0, new_acc1, new_acc2]
+        )
+        .take(nact)
+        {
+            let h = *dt * 0.5;
             let hinv = 1.0 / h;
 
             let c0 = 0.5;
@@ -375,16 +466,16 @@ impl Hermite for Hermite6 {
             let s4 = s3 * (4.0 * hinv);
             let s5 = s4 * (5.0 * hinv);
 
-            let mut acc3 = [0.0; 3];
-            let mut acc4 = [0.0; 3];
-            let mut acc5 = [0.0; 3];
+            let mut _acc3 = [0.0; 3];
+            let mut _acc4 = [0.0; 3];
+            let mut _acc5 = [0.0; 3];
             for k in 0..3 {
-                // let a0p = c0 * (pnew.acc0[k] + p.acc0[k]);
-                let a0m = c0 * (pnew.acc0[k] - p.acc0[k]);
-                let a1p = c1 * (pnew.acc1[k] + p.acc1[k]);
-                let a1m = c1 * (pnew.acc1[k] - p.acc1[k]);
-                let a2p = c2 * (pnew.acc2[k] + p.acc2[k]);
-                let a2m = c2 * (pnew.acc2[k] - p.acc2[k]);
+                // let a0p = c0 * (new_acc0[k] + acc0[k]);
+                let a0m = c0 * (new_acc0[k] - acc0[k]);
+                let a1p = c1 * (new_acc1[k] + acc1[k]);
+                let a1m = c1 * (new_acc1[k] - acc1[k]);
+                let a2p = c2 * (new_acc2[k] + acc2[k]);
+                let a2m = c2 * (new_acc2[k] - acc2[k]);
 
                 // even
                 let tmp = a2p - (1.0 / 2.0) * a1m;
@@ -402,30 +493,30 @@ impl Hermite for Hermite6 {
                 let a4 = a4mid + 5.0 * a5mid;
                 let a5 = a5mid;
 
-                acc3[k] = s3 * a3;
-                acc4[k] = s4 * a4;
-                acc5[k] = s5 * a5;
+                _acc3[k] = s3 * a3;
+                _acc4[k] = s4 * a4;
+                _acc5[k] = s5 * a5;
             }
 
             // Commit to the new state
-            p.tnow = pnew.tnow;
-            p.pos = pnew.pos;
-            p.vel = pnew.vel;
-            p.acc0 = pnew.acc0;
-            p.acc1 = pnew.acc1;
-            p.acc2 = pnew.acc2;
-            p.acc3 = acc3;
+            *tnow = new_tnow;
+            *pos = new_pos;
+            *vel = new_vel;
+            *acc0 = new_acc0;
+            *acc1 = new_acc1;
+            *acc2 = new_acc2;
+            *acc3 = _acc3;
 
             // Update time-steps
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
-            let a4 = acc4.iter().fold(0.0, |s, v| s + v * v);
-            let a5 = acc5.iter().fold(0.0, |s, v| s + v * v);
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = _acc3.iter().fold(0.0, |s, v| s + v * v);
+            let a4 = _acc4.iter().fold(0.0, |s, v| s + v * v);
+            let a5 = _acc5.iter().fold(0.0, |s, v| s + v * v);
             // let u = a1 + (a0 * a2).sqrt();
             // let l = a4 + (a3 * a5).sqrt();
-            // let dtnew = self.eta * (u / l).powf(1.0 / 6.0);
+            // let dtr = self.eta * (u / l).powf(1.0 / 6.0);
 
             let b1 = a1 + (a0 * a2).sqrt();
             let b2 = a2 + (a1 * a3).sqrt();
@@ -435,8 +526,8 @@ impl Hermite for Hermite6 {
             let u = b2 + (b1 * b3).sqrt();
             let l = b3 + (b2 * b4).sqrt();
 
-            let dtnew = self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dtnew);
+            let dtr = self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
         }
     }
 }
@@ -445,7 +536,6 @@ impl Hermite for Hermite6 {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hermite8 {
-    kernel: Acc3,
     tstep_scheme: TimeStepScheme,
     eta: Real,
     npec: u8,
@@ -453,7 +543,6 @@ pub struct Hermite8 {
 impl Hermite8 {
     pub fn new(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Hermite8 {
-            kernel: Acc3 {},
             tstep_scheme,
             eta,
             npec,
@@ -470,26 +559,26 @@ impl Hermite for Hermite8 {
         &self.tstep_scheme
     }
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        let tnow = psys.time;
-        let iiacc = self.kernel.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-            p.acc2 = iiacc.2[i];
-            p.acc3 = iiacc.3[i];
-        }
-        let iiacc = self.kernel.compute(&psys.as_slice());
-        for (i, p) in psys.iter_mut().enumerate() {
-            p.acc0 = iiacc.0[i];
-            p.acc1 = iiacc.1[i];
-            p.acc2 = iiacc.2[i];
-            p.acc3 = iiacc.3[i];
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = p.acc3.iter().fold(0.0, |s, v| s + v * v);
-            let a4 = a2 * (a2 / a0); // p.acc4.iter().fold(0.0, |s, v| s + v * v);
-            let a5 = a3 * (a2 / a0); // p.acc5.iter().fold(0.0, |s, v| s + v * v);
+        let acc = Acc1 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
+        psys.attrs.acc1 = acc.1;
+        let acc = Acc3 {}.compute(psys.as_ref());
+        psys.attrs.acc0 = acc.0;
+        psys.attrs.acc1 = acc.1;
+        psys.attrs.acc2 = acc.2;
+        psys.attrs.acc3 = acc.3;
+
+        let time = psys.time;
+
+        for (dt, tnow, &acc0, &acc1, &acc2, &acc3) in
+            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2, acc3])
+        {
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
+            let a4 = a2 * (a2 / a0); // acc4.iter().fold(0.0, |s, v| s + v * v);
+            let a5 = a3 * (a2 / a0); // acc5.iter().fold(0.0, |s, v| s + v * v);
 
             let b1 = a1 + (a0 * a2).sqrt();
             let b2 = a2 + (a1 * a3).sqrt();
@@ -499,16 +588,34 @@ impl Hermite for Hermite8 {
             let u = b2 + (b1 * b3).sqrt();
             let l = b3 + (b2 * b4).sqrt();
 
-            let dt = 0.125 * self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dt);
-            p.tnow = tnow;
+            let dtr = 0.125 * self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
+            *tnow = time;
         }
     }
-    fn predict(&self, dt: Real, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        psys_new.time = psys.time + dt;
-        let tnew = psys_new.time;
-        for (p, pnew) in psys.iter().zip(psys_new.iter_mut()) {
-            let dt = tnew - p.tnow;
+    fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
+        psys.time += dt;
+
+        for (
+            &tnow,
+            &pos,
+            &vel,
+            &acc0,
+            &acc1,
+            &acc2,
+            &acc3,
+            &acc4,
+            &acc5,
+            new_tnow,
+            new_pos,
+            new_vel,
+            new_acc0,
+            new_acc1,
+        ) in soa_zip!(
+            &mut psys.attrs,
+            [tnow, pos, vel, acc0, acc1, acc2, acc3, acc4, acc5, mut new_tnow, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1]
+        ) {
+            let dt = psys.time - tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
             let h3 = dt * (1.0 / 3.0);
@@ -517,48 +624,110 @@ impl Hermite for Hermite8 {
             let h6 = dt * (1.0 / 6.0);
             let h7 = dt * (1.0 / 7.0);
 
-            pnew.tnow = p.tnow + dt;
+            *new_tnow = tnow + dt;
             for k in 0..3 {
-                let dpos = h7 * (p.acc5[k]);
-                let dpos = h6 * (p.acc4[k] + dpos);
-                let dpos = h5 * (p.acc3[k] + dpos);
-                let dpos = h4 * (p.acc2[k] + dpos);
-                let dpos = h3 * (p.acc1[k] + dpos);
-                let dpos = h2 * (p.acc0[k] + dpos);
-                let dpos = h1 * (p.vel[k] + dpos);
-                pnew.pos[k] = p.pos[k] + dpos;
+                let dpos = h7 * (acc5[k]);
+                let dpos = h6 * (acc4[k] + dpos);
+                let dpos = h5 * (acc3[k] + dpos);
+                let dpos = h4 * (acc2[k] + dpos);
+                let dpos = h3 * (acc1[k] + dpos);
+                let dpos = h2 * (acc0[k] + dpos);
+                let dpos = h1 * (vel[k] + dpos);
+                new_pos[k] = pos[k] + dpos;
 
-                let dvel = h6 * (p.acc5[k]);
-                let dvel = h5 * (p.acc4[k] + dvel);
-                let dvel = h4 * (p.acc3[k] + dvel);
-                let dvel = h3 * (p.acc2[k] + dvel);
-                let dvel = h2 * (p.acc1[k] + dvel);
-                let dvel = h1 * (p.acc0[k] + dvel);
-                pnew.vel[k] = p.vel[k] + dvel;
+                let dvel = h6 * (acc5[k]);
+                let dvel = h5 * (acc4[k] + dvel);
+                let dvel = h4 * (acc3[k] + dvel);
+                let dvel = h3 * (acc2[k] + dvel);
+                let dvel = h2 * (acc1[k] + dvel);
+                let dvel = h1 * (acc0[k] + dvel);
+                new_vel[k] = vel[k] + dvel;
 
-                let dacc0 = h5 * (p.acc5[k]);
-                let dacc0 = h4 * (p.acc4[k] + dacc0);
-                let dacc0 = h3 * (p.acc3[k] + dacc0);
-                let dacc0 = h2 * (p.acc2[k] + dacc0);
-                let dacc0 = h1 * (p.acc1[k] + dacc0);
-                pnew.acc0[k] = p.acc0[k] + dacc0;
+                let dacc0 = h5 * (acc5[k]);
+                let dacc0 = h4 * (acc4[k] + dacc0);
+                let dacc0 = h3 * (acc3[k] + dacc0);
+                let dacc0 = h2 * (acc2[k] + dacc0);
+                let dacc0 = h1 * (acc1[k] + dacc0);
+                new_acc0[k] = acc0[k] + dacc0;
 
-                let dacc1 = h4 * (p.acc5[k]);
-                let dacc1 = h3 * (p.acc4[k] + dacc1);
-                let dacc1 = h2 * (p.acc3[k] + dacc1);
-                let dacc1 = h1 * (p.acc2[k] + dacc1);
-                pnew.acc1[k] = p.acc1[k] + dacc1;
+                let dacc1 = h4 * (acc5[k]);
+                let dacc1 = h3 * (acc4[k] + dacc1);
+                let dacc1 = h2 * (acc3[k] + dacc1);
+                let dacc1 = h1 * (acc2[k] + dacc1);
+                new_acc1[k] = acc1[k] + dacc1;
             }
         }
     }
-    fn ecorrect(&self, nact: usize, psys: &ParticleSystem, psys_new: &mut ParticleSystem) {
-        let (psys_lo, _) = psys.split_at(nact);
-        let (psys_new_lo, psys_new_hi) = psys_new.split_at_mut(nact);
-        let acc_new_lo = self.kernel.compute(&psys_new_lo);
-        let (acc_new_hi, _) = self.kernel.compute_mutual(&psys_new_lo, &psys_new_hi);
-        for (i, (p, pnew)) in psys_lo.iter().zip(psys_new_lo.iter_mut()).enumerate() {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
+        use crate::gravity::acc3::SrcSlice;
+
+        let kernel = Acc3 {};
+        let new_acc_lo = kernel.compute(SrcSlice {
+            eps: &psys.attrs.eps[..nact],
+            mass: &psys.attrs.mass[..nact],
+            rdot0: &psys.attrs.new_pos[..nact],
+            rdot1: &psys.attrs.new_vel[..nact],
+            rdot2: &psys.attrs.new_acc0[..nact],
+            rdot3: &psys.attrs.new_acc1[..nact],
+        });
+        let (new_acc_hi, _) = kernel.compute_mutual(
+            SrcSlice {
+                eps: &psys.attrs.eps[..nact],
+                mass: &psys.attrs.mass[..nact],
+                rdot0: &psys.attrs.new_pos[..nact],
+                rdot1: &psys.attrs.new_vel[..nact],
+                rdot2: &psys.attrs.new_acc0[..nact],
+                rdot3: &psys.attrs.new_acc1[..nact],
+            },
+            SrcSlice {
+                eps: &psys.attrs.eps[nact..],
+                mass: &psys.attrs.mass[nact..],
+                rdot0: &psys.attrs.new_pos[nact..],
+                rdot1: &psys.attrs.new_vel[nact..],
+                rdot2: &psys.attrs.new_acc0[nact..],
+                rdot3: &psys.attrs.new_acc1[nact..],
+            },
+        );
+        psys.attrs.new_acc0[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.0.iter().flatten())
+            .zip(new_acc_hi.0.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc1[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.1.iter().flatten())
+            .zip(new_acc_hi.1.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc2[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.2.iter().flatten())
+            .zip(new_acc_hi.2.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+        psys.attrs.new_acc3[..nact]
+            .iter_mut()
+            .flatten()
+            .zip(new_acc_lo.3.iter().flatten())
+            .zip(new_acc_hi.3.iter().flatten())
+            .for_each(|((a, &a_lo), &a_hi)| {
+                *a = a_lo + a_hi;
+            });
+
+        for (&dt, &pos, &vel, &acc0, &acc1, &acc2, &acc3, new_pos, new_vel, new_acc0, new_acc1, new_acc2, new_acc3) in soa_zip!(
+            &mut psys.attrs,
+            [dt, pos, vel, acc0, acc1, acc2, acc3, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1, mut new_acc2, mut new_acc3]
+        )
+        .take(nact)
+        {
+            let h = dt * 0.5;
 
             let c0 = 0.5;
             let c1 = c0 * h;
@@ -571,32 +740,28 @@ impl Hermite for Hermite8 {
             let d3 = c3 * (2.0 / 35.0);
 
             for k in 0..3 {
-                pnew.acc0[k] = acc_new_lo.0[i][k] + acc_new_hi.0[i][k];
-                pnew.acc1[k] = acc_new_lo.1[i][k] + acc_new_hi.1[i][k];
-                pnew.acc2[k] = acc_new_lo.2[i][k] + acc_new_hi.2[i][k];
-                pnew.acc3[k] = acc_new_lo.3[i][k] + acc_new_hi.3[i][k];
+                let a0p = d0 * (new_acc0[k] + acc0[k]);
+                let a1m = d1 * (new_acc1[k] - acc1[k]);
+                let a2p = d2 * (new_acc2[k] + acc2[k]);
+                let a3m = d3 * (new_acc3[k] - acc3[k]);
+                new_vel[k] = vel[k] + dt * (a0p - (a1m - (a2p - a3m)));
 
-                let a0p = d0 * (pnew.acc0[k] + p.acc0[k]);
-                let a1m = d1 * (pnew.acc1[k] - p.acc1[k]);
-                let a2p = d2 * (pnew.acc2[k] + p.acc2[k]);
-                let a3m = d3 * (pnew.acc3[k] - p.acc3[k]);
-                pnew.vel[k] = p.vel[k] + dt * (a0p - (a1m - (a2p - a3m)));
-
-                let v0p = d0 * (pnew.vel[k] + p.vel[k]);
-                let v1m = d1 * (pnew.acc0[k] - p.acc0[k]);
-                let v2p = d2 * (pnew.acc1[k] + p.acc1[k]);
-                let v3m = d3 * (pnew.acc2[k] - p.acc2[k]);
-                pnew.pos[k] = p.pos[k] + dt * (v0p - (v1m - (v2p - v3m)));
+                let v0p = d0 * (new_vel[k] + vel[k]);
+                let v1m = d1 * (new_acc0[k] - acc0[k]);
+                let v2p = d2 * (new_acc1[k] + acc1[k]);
+                let v3m = d3 * (new_acc2[k] - acc2[k]);
+                new_pos[k] = pos[k] + dt * (v0p - (v1m - (v2p - v3m)));
             }
         }
     }
-    fn commit(&self, nact: usize, psys: &mut ParticleSystem, psys_new: &ParticleSystem) {
-        psys.time = psys_new.time;
-        let (psys_lo, _) = psys.split_at_mut(nact);
-        let (psys_new_lo, _) = psys_new.split_at(nact);
-        for (p, pnew) in psys_lo.iter_mut().zip(psys_new_lo.iter()) {
-            let dt = p.dt;
-            let h = 0.5 * dt;
+    fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
+        for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, acc4, acc5, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2, &new_acc3) in soa_zip!(
+            &mut psys.attrs,
+            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, mut acc2, mut acc3, mut acc4, mut acc5, new_tnow, new_pos, new_vel, new_acc0, new_acc1, new_acc2, new_acc3]
+        )
+        .take(nact)
+        {
+            let h = *dt * 0.5;
             let hinv = 1.0 / h;
 
             let c0 = 0.5;
@@ -612,19 +777,19 @@ impl Hermite for Hermite8 {
             let s6 = s5 * (6.0 * hinv);
             let s7 = s6 * (7.0 * hinv);
 
-            let mut acc4 = [0.0; 3];
-            let mut acc5 = [0.0; 3];
-            let mut acc6 = [0.0; 3];
-            let mut acc7 = [0.0; 3];
+            let mut _acc4 = [0.0; 3];
+            let mut _acc5 = [0.0; 3];
+            let mut _acc6 = [0.0; 3];
+            let mut _acc7 = [0.0; 3];
             for k in 0..3 {
-                // let a0p = c0 * (pnew.acc0[k] + p.acc0[k]);
-                let a0m = c0 * (pnew.acc0[k] - p.acc0[k]);
-                let a1p = c1 * (pnew.acc1[k] + p.acc1[k]);
-                let a1m = c1 * (pnew.acc1[k] - p.acc1[k]);
-                let a2p = c2 * (pnew.acc2[k] + p.acc2[k]);
-                let a2m = c2 * (pnew.acc2[k] - p.acc2[k]);
-                let a3p = c3 * (pnew.acc3[k] + p.acc3[k]);
-                let a3m = c3 * (pnew.acc3[k] - p.acc3[k]);
+                // let a0p = c0 * (new_acc0[k] + acc0[k]);
+                let a0m = c0 * (new_acc0[k] - acc0[k]);
+                let a1p = c1 * (new_acc1[k] + acc1[k]);
+                let a1m = c1 * (new_acc1[k] - acc1[k]);
+                let a2p = c2 * (new_acc2[k] + acc2[k]);
+                let a2m = c2 * (new_acc2[k] - acc2[k]);
+                let a3p = c3 * (new_acc3[k] + acc3[k]);
+                let a3m = c3 * (new_acc3[k] - acc3[k]);
 
                 // even
                 let tmp = a2p - (1.0 / 2.0) * a1m;
@@ -645,35 +810,35 @@ impl Hermite for Hermite8 {
                 let a6 = a6mid + 7.0 * a7mid;
                 let a7 = a7mid;
 
-                acc4[k] = s4 * a4;
-                acc5[k] = s5 * a5;
-                acc6[k] = s6 * a6;
-                acc7[k] = s7 * a7;
+                _acc4[k] = s4 * a4;
+                _acc5[k] = s5 * a5;
+                _acc6[k] = s6 * a6;
+                _acc7[k] = s7 * a7;
             }
 
             // Commit to the new state
-            p.tnow = pnew.tnow;
-            p.pos = pnew.pos;
-            p.vel = pnew.vel;
-            p.acc0 = pnew.acc0;
-            p.acc1 = pnew.acc1;
-            p.acc2 = pnew.acc2;
-            p.acc3 = pnew.acc3;
-            p.acc4 = acc4;
-            p.acc5 = acc5;
+            *tnow = new_tnow;
+            *pos = new_pos;
+            *vel = new_vel;
+            *acc0 = new_acc0;
+            *acc1 = new_acc1;
+            *acc2 = new_acc2;
+            *acc3 = new_acc3;
+            *acc4 = _acc4;
+            *acc5 = _acc5;
 
             // Update time-steps
-            let a0 = p.acc0.iter().fold(0.0, |s, v| s + v * v);
-            let a1 = p.acc1.iter().fold(0.0, |s, v| s + v * v);
-            let a2 = p.acc2.iter().fold(0.0, |s, v| s + v * v);
-            let a3 = p.acc3.iter().fold(0.0, |s, v| s + v * v);
-            let a4 = acc4.iter().fold(0.0, |s, v| s + v * v);
-            let a5 = acc5.iter().fold(0.0, |s, v| s + v * v);
-            let a6 = acc6.iter().fold(0.0, |s, v| s + v * v);
-            let a7 = acc7.iter().fold(0.0, |s, v| s + v * v);
+            let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
+            let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
+            let a2 = acc2.iter().fold(0.0, |s, v| s + v * v);
+            let a3 = acc3.iter().fold(0.0, |s, v| s + v * v);
+            let a4 = _acc4.iter().fold(0.0, |s, v| s + v * v);
+            let a5 = _acc5.iter().fold(0.0, |s, v| s + v * v);
+            let a6 = _acc6.iter().fold(0.0, |s, v| s + v * v);
+            let a7 = _acc7.iter().fold(0.0, |s, v| s + v * v);
             // let u = a1 + (a0 * a2).sqrt();
             // let l = a6 + (a5 * a7).sqrt();
-            // let dtnew = self.eta * (u / l).powf(1.0 / 10.0);
+            // let dtr = self.eta * (u / l).powf(1.0 / 10.0);
 
             let b1 = a1 + (a0 * a2).sqrt();
             let b2 = a2 + (a1 * a3).sqrt();
@@ -690,8 +855,8 @@ impl Hermite for Hermite8 {
             let u = c3 + (c2 * c4).sqrt();
             let l = c4 + (c3 * c5).sqrt();
 
-            let dtnew = self.eta * (u / l).sqrt();
-            p.dt = to_power_of_two(dtnew);
+            let dtr = self.eta * (u / l).sqrt();
+            *dt = to_power_of_two(dtr);
         }
     }
 }
