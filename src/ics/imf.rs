@@ -104,7 +104,7 @@ mod tests {
         let m: Vec<_> = imf.sample_iter(&mut rng).take(1_000_000).collect();
         let min = m.iter().fold(m[0], |p, q| p.min(*q));
         let max = m.iter().fold(m[0], |p, q| p.max(*q));
-        assert!(min == max);
+        assert!(min.to_bits() == max.to_bits());
     }
 
     #[test]

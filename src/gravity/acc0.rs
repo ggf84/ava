@@ -29,11 +29,11 @@ pub struct Src {
 
 #[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
 #[soa_derive = "Clone, Debug, PartialEq"]
-pub struct Dst {
+struct Dst {
     adot0: [Real; 3],
 }
 
-impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
+impl<'a> ToSoA<SrcSoA> for SrcSlice<'a> {
     fn to_soa(&self, ps_src: &mut [SrcSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -50,7 +50,7 @@ impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
+impl<'a> FromSoA<SrcSoA, DstSoA> for DstSliceMut<'a> {
     fn from_soa(&mut self, ps_src: &[SrcSoA], ps_dst: &[DstSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -66,10 +66,55 @@ impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
     }
 }
 
-pub struct Acc0 {}
+pub struct AccDot0Kernel {}
 impl_kernel!(SrcSlice, DstSliceMut, SrcSoA, DstSoA, 64);
 
-impl Kernel for Acc0 {
+#[derive(Clone, Debug, PartialEq)]
+pub struct AccDot0(pub Vec<[Real; 3]>);
+impl AccDot0 {
+    pub fn zeros(n: usize) -> Self {
+        AccDot0(vec![Default::default(); n])
+    }
+}
+impl<'a> From<&'a mut AccDot0> for DstSliceMut<'a> {
+    fn from(acc: &'a mut AccDot0) -> Self {
+        DstSliceMut {
+            adot0: &mut acc.0[..],
+        }
+    }
+}
+
+impl<'a, T> From<&'a T> for SrcSlice<'a>
+where
+    T: AsRef<ParticleSystem>,
+{
+    fn from(ps: &'a T) -> Self {
+        let ps = ps.as_ref();
+        SrcSlice {
+            eps: &ps.attrs.eps[..],
+            mass: &ps.attrs.mass[..],
+            rdot0: &ps.attrs.pos[..],
+        }
+    }
+}
+
+impl<T: Into<SrcSlice<'_>>> Compute<T> for AccDot0Kernel {
+    type Output = AccDot0;
+    fn compute(&self, src: T, dst: &mut Self::Output) {
+        let src = src.into();
+        let mut dst = dst.into();
+        self.triangle(&src, &mut dst);
+    }
+    fn compute_mutual(&self, isrc: T, jsrc: T, idst: &mut Self::Output, jdst: &mut Self::Output) {
+        let isrc = isrc.into();
+        let jsrc = jsrc.into();
+        let mut idst = idst.into();
+        let mut jdst = jdst.into();
+        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
+    }
+}
+
+impl Kernel for AccDot0Kernel {
     // flop count: 27
     fn p2p(
         &self,
@@ -123,49 +168,6 @@ impl Kernel for Acc0 {
     }
 }
 
-impl<'a, 'b: 'a> From<&'b ParticleSystem> for SrcSlice<'a> {
-    fn from(ps: &'b ParticleSystem) -> Self {
-        SrcSlice {
-            eps: &ps.attrs.eps[..],
-            mass: &ps.attrs.mass[..],
-            rdot0: &ps.attrs.pos[..],
-        }
-    }
-}
-
-impl<S: Into<SrcSlice<'_>>> Compute<S> for Acc0 {
-    type Output = (Vec<[Real; 3]>,);
-    /// For each particle of the system, compute the k-th derivative
-    /// of the gravitational acceleration, for k = {0}.
-    fn compute(&self, src: S) -> Self::Output {
-        let src = src.into();
-        let mut acc = (vec![Default::default(); src.len()],);
-        let mut dst = DstSliceMut {
-            adot0: &mut acc.0[..],
-        };
-
-        self.triangle(&src, &mut dst);
-        acc
-    }
-    /// For each particle of two disjoint systems, A and B, compute the mutual k-th derivative
-    /// of the gravitational acceleration, for k = {0}.
-    fn compute_mutual(&self, isrc: S, jsrc: S) -> (Self::Output, Self::Output) {
-        let isrc = isrc.into();
-        let jsrc = jsrc.into();
-        let mut iacc = (vec![Default::default(); isrc.len()],);
-        let mut jacc = (vec![Default::default(); jsrc.len()],);
-        let mut idst = DstSliceMut {
-            adot0: &mut iacc.0[..],
-        };
-        let mut jdst = DstSliceMut {
-            adot0: &mut jacc.0[..],
-        };
-
-        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
-        (iacc, jacc)
-    }
-}
-
 #[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
@@ -189,7 +191,7 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Acc0 {};
+        let kernel = AccDot0Kernel {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
             let mut ip_src: [SrcSoA; NTILES] = [Default::default(); NTILES];

@@ -3,18 +3,18 @@ use std::mem::size_of;
 
 const TILE: usize = 16 / size_of::<Real>();
 
-pub trait Compute<T: ?Sized> {
+pub trait Compute<T> {
     type Output;
-    fn compute(&self, src: T) -> Self::Output;
-    fn compute_mutual(&self, isrc: T, jsrc: T) -> (Self::Output, Self::Output);
+    fn compute(&self, src: T, dst: &mut Self::Output);
+    fn compute_mutual(&self, isrc: T, jsrc: T, idst: &mut Self::Output, jdst: &mut Self::Output);
 }
 
-trait ToSoA<T: ?Sized> {
-    fn to_soa(&self, p_src: &mut T);
+trait ToSoA<T> {
+    fn to_soa(&self, p_src: &mut [T]);
 }
 
-trait FromSoA<T: ?Sized, U: ?Sized> {
-    fn from_soa(&mut self, p_src: &T, p_dst: &U);
+trait FromSoA<T, U> {
+    fn from_soa(&mut self, p_src: &[T], p_dst: &[U]);
 }
 
 macro_rules! impl_kernel {
@@ -147,11 +147,5 @@ pub mod acc1;
 pub mod acc2;
 pub mod acc3;
 pub mod energy;
-
-pub use self::acc0::Acc0;
-pub use self::acc1::Acc1;
-pub use self::acc2::Acc2;
-pub use self::acc3::Acc3;
-pub use self::energy::Energy;
 
 // -- end of file --

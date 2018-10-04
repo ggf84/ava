@@ -31,12 +31,12 @@ pub struct Src {
 
 #[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
 #[soa_derive = "Clone, Debug, PartialEq"]
-pub struct Dst {
+struct Dst {
     ekin: Real,
     epot: Real,
 }
 
-impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
+impl<'a> ToSoA<SrcSoA> for SrcSlice<'a> {
     fn to_soa(&self, ps_src: &mut [SrcSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -54,7 +54,7 @@ impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
+impl<'a> FromSoA<SrcSoA, DstSoA> for DstSliceMut<'a> {
     fn from_soa(&mut self, ps_src: &[SrcSoA], ps_dst: &[DstSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -70,12 +70,94 @@ impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
     }
 }
 
-pub struct Energy {
-    mtot: Real,
-}
+pub struct EnergyKernel {}
 impl_kernel!(SrcSlice, DstSliceMut, SrcSoA, DstSoA, 64);
 
-impl Kernel for Energy {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Energy {
+    pub kin: Vec<Real>,
+    pub pot: Vec<Real>,
+}
+impl Energy {
+    pub fn zeros(n: usize) -> Self {
+        Energy {
+            kin: vec![Default::default(); n],
+            pot: vec![Default::default(); n],
+        }
+    }
+    pub fn reduce(&self, mtot: Real) -> (Real, Real) {
+        let pe = self.pot.iter().sum::<Real>() * 0.5;
+        let ke = self.kin.iter().sum::<Real>() * 0.25 / mtot;
+
+        (ke, pe)
+    }
+}
+impl<'a> From<&'a mut Energy> for DstSliceMut<'a> {
+    fn from(energy: &'a mut Energy) -> Self {
+        DstSliceMut {
+            ekin: &mut energy.kin[..],
+            epot: &mut energy.pot[..],
+        }
+    }
+}
+
+impl<'a, T> From<&'a T> for SrcSlice<'a>
+where
+    T: AsRef<ParticleSystem>,
+{
+    fn from(ps: &'a T) -> Self {
+        let ps = ps.as_ref();
+        SrcSlice {
+            eps: &ps.attrs.eps[..],
+            mass: &ps.attrs.mass[..],
+            rdot0: &ps.attrs.pos[..],
+            rdot1: &ps.attrs.vel[..],
+        }
+    }
+}
+
+/// Compute the kinetic and potential energies of the system.
+///
+/// \\[ KE = \frac{1}{4 M} \sum_{i=0}^{N} \sum_{j=0}^{N} m_{i} m_{j} v_{ij}^{2} \\]
+///
+/// \\[ PE = -\frac{1}{2} \sum_{i=0}^{N} \sum_{j=0}^{N} \frac{m_{i} m_{j}}{r_{ij}} \\]
+///
+/// where \\( M \\) is the total mass, and \\( N \\) is the number of particles in the system.
+///
+/// Thus, \\[ KE_{tot} = KE + KE_{CoM}\\]
+///
+/// and, \\[ PE_{tot} = PE \\]
+///
+/// Compute the mutual kinetic and potential energies of two disjoint systems, A and B.
+///
+/// \\[ KE_{AB} = \frac{1}{4 M} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} m_{i} m_{j} v_{ij}^{2} \\]
+///
+/// \\[ PE_{AB} = -\frac{1}{2} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} \frac{m_{i} m_{j}}{r_{ij}} \\]
+///
+/// where \\( M = M_{A} + M_{B} \\) is the total mass of the combined system, and \\( N_{A} \\)
+/// and \\( N_{B} \\) are the number of particles in each system.
+///
+/// Thus, \\[ KE_{tot} = \frac{M_{A} KE_{A} + M_{B} KE_{B}}{M} + KE_{AB} + KE_{CoM} \\]
+///
+/// and, \\[ PE_{tot} = PE_{A} + PE_{B} + PE_{AB} \\]
+///
+impl<T: Into<SrcSlice<'_>>> Compute<T> for EnergyKernel {
+    type Output = Energy;
+    fn compute(&self, src: T, dst: &mut Self::Output) {
+        let src = src.into();
+        let mut dst = dst.into();
+        self.triangle(&src, &mut dst);
+    }
+    fn compute_mutual(&self, isrc: T, jsrc: T, idst: &mut Self::Output, jdst: &mut Self::Output) {
+        let isrc = isrc.into();
+        let jsrc = jsrc.into();
+        let mut idst = idst.into();
+        let mut jdst = jdst.into();
+        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
+    }
+}
+
+impl Kernel for EnergyKernel {
     // flop count: 28
     fn p2p(
         &self,
@@ -147,105 +229,6 @@ impl Kernel for Energy {
     }
 }
 
-impl<'a, 'b: 'a> From<&'b ParticleSystem> for SrcSlice<'a> {
-    fn from(ps: &'b ParticleSystem) -> Self {
-        SrcSlice {
-            eps: &ps.attrs.eps[..],
-            mass: &ps.attrs.mass[..],
-            rdot0: &ps.attrs.pos[..],
-            rdot1: &ps.attrs.vel[..],
-        }
-    }
-}
-
-impl<S: Into<SrcSlice<'_>>> Compute<S> for Energy {
-    type Output = (Vec<Real>, Vec<Real>);
-    fn compute(&self, src: S) -> Self::Output {
-        let src = src.into();
-        let mut ke = vec![Default::default(); src.len()];
-        let mut pe = vec![Default::default(); src.len()];
-        let mut dst = DstSliceMut {
-            ekin: &mut ke[..],
-            epot: &mut pe[..],
-        };
-
-        self.triangle(&src, &mut dst);
-        (ke, pe)
-    }
-    fn compute_mutual(&self, isrc: S, jsrc: S) -> (Self::Output, Self::Output) {
-        let isrc = isrc.into();
-        let jsrc = jsrc.into();
-        let mut ike = vec![Default::default(); isrc.len()];
-        let mut ipe = vec![Default::default(); isrc.len()];
-        let mut jke = vec![Default::default(); jsrc.len()];
-        let mut jpe = vec![Default::default(); jsrc.len()];
-        let mut idst = DstSliceMut {
-            ekin: &mut ike[..],
-            epot: &mut ipe[..],
-        };
-        let mut jdst = DstSliceMut {
-            ekin: &mut jke[..],
-            epot: &mut jpe[..],
-        };
-
-        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
-        ((ike, ipe), (jke, jpe))
-    }
-}
-
-impl Energy {
-    pub fn new(mtot: Real) -> Self {
-        Energy { mtot }
-    }
-    /// Compute the kinetic and potential energies of the system.
-    ///
-    /// \\[ KE = \frac{1}{4 M} \sum_{i=0}^{N} \sum_{j=0}^{N} m_{i} m_{j} v_{ij}^{2} \\]
-    ///
-    /// \\[ PE = -\frac{1}{2} \sum_{i=0}^{N} \sum_{j=0}^{N} \frac{m_{i} m_{j}}{r_{ij}} \\]
-    ///
-    /// where \\( M \\) is the total mass, and \\( N \\) is the number of particles in the system.
-    ///
-    /// Thus, \\[ KE_{tot} = KE + KE_{CoM}\\]
-    ///
-    /// and, \\[ PE_{tot} = PE \\]
-    ///
-    pub fn energies<'a, S: Into<SrcSlice<'a>>>(&self, src: S) -> (Real, Real) {
-        let (ke, pe) = self.compute(src);
-
-        let pe = pe.iter().sum::<Real>() * 0.5;
-        let ke = ke.iter().sum::<Real>() * 0.25 / self.mtot;
-
-        (ke, pe)
-    }
-    /// Compute the mutual kinetic and potential energies of two disjoint systems, A and B.
-    ///
-    /// \\[ KE_{AB} = \frac{1}{4 M} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} m_{i} m_{j} v_{ij}^{2} \\]
-    ///
-    /// \\[ PE_{AB} = -\frac{1}{2} \sum_{i=0}^{N_{A}} \sum_{j=0}^{N_{B}} \frac{m_{i} m_{j}}{r_{ij}} \\]
-    ///
-    /// where \\( M = M_{A} + M_{B} \\) is the total mass of the combined system, and \\( N_{A} \\)
-    /// and \\( N_{B} \\) are the number of particles in each system.
-    ///
-    /// Thus, \\[ KE_{tot} = \frac{M_{A} KE_{A} + M_{B} KE_{B}}{M} + KE_{AB} + KE_{CoM} \\]
-    ///
-    /// and, \\[ PE_{tot} = PE_{A} + PE_{B} + PE_{AB} \\]
-    ///
-    pub fn energies_mutual<'a, S: Into<SrcSlice<'a>>>(&self, isrc: S, jsrc: S) -> (Real, Real) {
-        let ((ike, ipe), (jke, jpe)) = self.compute_mutual(isrc, jsrc);
-
-        let ipe = ipe.iter().sum::<Real>() * 0.5;
-        let ike = ike.iter().sum::<Real>() * 0.25 / self.mtot;
-
-        let jpe = jpe.iter().sum::<Real>() * 0.5;
-        let jke = jke.iter().sum::<Real>() * 0.25 / self.mtot;
-
-        let pe = ipe + jpe;
-        let ke = ike + jke;
-
-        (ke, pe)
-    }
-}
-
 #[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
@@ -269,7 +252,7 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
+        let kernel = EnergyKernel {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
             let mut ip_src: [SrcSoA; NTILES] = [Default::default(); NTILES];

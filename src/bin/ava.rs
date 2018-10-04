@@ -1,5 +1,12 @@
 use ava::{
-    gravity::{Acc0, Acc1, Acc2, Acc3, Compute, Energy},
+    gravity::{
+        acc0::{AccDot0, AccDot0Kernel},
+        acc1::{AccDot1, AccDot1Kernel},
+        acc2::{AccDot2, AccDot2Kernel},
+        acc3::{AccDot3, AccDot3Kernel},
+        energy::{Energy, EnergyKernel},
+        Compute,
+    },
     ics::{
         imf::{EqualMass, Maschberger2013},
         sdp::{Dehnen0, Dehnen1, Dehnen12, Dehnen2, Dehnen32, Plummer},
@@ -44,8 +51,13 @@ fn main() -> Result<(), std::io::Error> {
         ParticleSystem::from_model(7 * npart, &model, &mut rng).into_standard_units(0.5, None);
     let psys2 =
         ParticleSystem::from_model(3 * npart, &model, &mut rng).into_standard_units(0.5, None);
-    let (iacc_12, jacc_12) = Acc0 {}.compute_mutual(psys1.as_ref(), psys2.as_ref());
-    let (iacc_21, jacc_21) = Acc0 {}.compute_mutual(psys2.as_ref(), psys1.as_ref());
+
+    let mut iacc_12 = AccDot0::zeros(psys1.len());
+    let mut jacc_12 = AccDot0::zeros(psys2.len());
+    let mut iacc_21 = AccDot0::zeros(psys2.len());
+    let mut jacc_21 = AccDot0::zeros(psys1.len());
+    AccDot0Kernel {}.compute_mutual(&psys1, &psys2, &mut iacc_12, &mut jacc_12);
+    AccDot0Kernel {}.compute_mutual(&psys2, &psys1, &mut iacc_21, &mut jacc_21);
     assert!(iacc_21 == jacc_12);
     assert!(iacc_12 == jacc_21);
     let mut ftot0 = [0.0; 3];
@@ -66,7 +78,8 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("iacc_21: {:?}", &iacc_21.0[..2]);
     eprintln!("");
 
-    let acc = Acc0 {}.compute(psys.as_ref());
+    let mut acc = AccDot0::zeros(psys.len());
+    AccDot0Kernel {}.compute(&psys, &mut acc);
     let mut ftot0 = [0.0; 3];
     for (i, m) in psys.attrs.mass.iter().enumerate() {
         for k in 0..3 {
@@ -77,7 +90,8 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("acc.0: {:?}", &acc.0[..2]);
     eprintln!("");
 
-    let acc = Acc1 {}.compute(psys.as_ref());
+    let mut acc = AccDot1::zeros(psys.len());
+    AccDot1Kernel {}.compute(&psys, &mut acc);
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     for (i, m) in psys.attrs.mass.iter().enumerate() {
@@ -93,7 +107,8 @@ fn main() -> Result<(), std::io::Error> {
     eprintln!("");
 
     psys.attrs.acc0 = acc.0;
-    let acc = Acc2 {}.compute(psys.as_ref());
+    let mut acc = AccDot2::zeros(psys.len());
+    AccDot2Kernel {}.compute(&psys, &mut acc);
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
@@ -114,7 +129,8 @@ fn main() -> Result<(), std::io::Error> {
 
     psys.attrs.acc0 = acc.0;
     psys.attrs.acc1 = acc.1;
-    let acc = Acc3 {}.compute(psys.as_ref());
+    let mut acc = AccDot3::zeros(psys.len());
+    AccDot3Kernel {}.compute(&psys, &mut acc);
     let mut ftot0 = [0.0; 3];
     let mut ftot1 = [0.0; 3];
     let mut ftot2 = [0.0; 3];
@@ -158,26 +174,43 @@ fn main() -> Result<(), std::io::Error> {
         let mtot = psys.com_mass();
         // let mtot = mtot_1 + mtot_2;
         let kecom = kecom_1 + kecom_2;
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
-        let (ke_1, pe_1) = Energy::new(mtot_1).energies(psys_1.as_ref());
-        let (ke_2, pe_2) = Energy::new(mtot_2).energies(psys_2.as_ref());
-        let (ke_12, pe_12) = Energy::new(mtot).energies_mutual(psys_1.as_ref(), psys_2.as_ref());
+
+        let mut energy = Energy::zeros(psys.len());
+        EnergyKernel {}.compute(&psys, &mut energy);
+        let (ke, pe) = energy.reduce(mtot);
+
+        let mut energy_1 = Energy::zeros(psys_1.len());
+        EnergyKernel {}.compute(&psys_1, &mut energy_1);
+        let (ke_1, pe_1) = energy_1.reduce(mtot_1);
+
+        let mut energy_2 = Energy::zeros(psys_2.len());
+        EnergyKernel {}.compute(&psys_2, &mut energy_2);
+        let (ke_2, pe_2) = energy_2.reduce(mtot_2);
+
+        let mut energy_12 = Energy::zeros(psys_1.len());
+        let mut energy_21 = Energy::zeros(psys_2.len());
+        EnergyKernel {}.compute_mutual(&psys_1, &psys_2, &mut energy_12, &mut energy_21);
+        let (ke_12, pe_12) = energy_12.reduce(mtot);
+        let (ke_21, pe_21) = energy_21.reduce(mtot);
+        let ke_1221 = ke_12 + ke_21;
+        let pe_1221 = pe_12 + pe_21;
+
         eprintln!("{:?} {:?}", ke, pe);
         eprintln!("{:?} {:?}", ke_1, pe_1);
         eprintln!("{:?} {:?}", ke_2, pe_2);
-        eprintln!("{:?} {:?}", ke_12, pe_12);
-        eprintln!("{:?} {:?}", ke_1 + ke_2 + kecom, pe_12 + (pe_1 + pe_2));
+        eprintln!("{:?} {:?}", ke_1221, pe_1221);
+        eprintln!("{:?} {:?}", ke_1 + ke_2 + kecom, pe_1221 + (pe_1 + pe_2));
         eprintln!(
             "{:?} {:?}",
-            ke_12 + (mtot_1 * ke_1 + mtot_2 * ke_2) / mtot,
-            pe_12 + (pe_1 + pe_2)
+            ke_1221 + (mtot_1 * ke_1 + mtot_2 * ke_2) / mtot,
+            pe_1221 + (pe_1 + pe_2)
         );
     }
 
     for _ in 0..1 {
         let timer = Instant::now();
-        // Pass mtot=1 because here we are not interested in the actual result.
-        Energy::new(1.0).energies(psys.as_ref());
+        let mut energy = Energy::zeros(psys.len());
+        EnergyKernel {}.compute(&psys, &mut energy);
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -188,7 +221,8 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc0 {}.compute(psys.as_ref());
+        let mut acc = AccDot0::zeros(psys.len());
+        AccDot0Kernel {}.compute(&psys, &mut acc);
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -199,7 +233,8 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc1 {}.compute(psys.as_ref());
+        let mut acc = AccDot1::zeros(psys.len());
+        AccDot1Kernel {}.compute(&psys, &mut acc);
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -210,7 +245,8 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc2 {}.compute(psys.as_ref());
+        let mut acc = AccDot2::zeros(psys.len());
+        AccDot2Kernel {}.compute(&psys, &mut acc);
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64
@@ -221,7 +257,8 @@ fn main() -> Result<(), std::io::Error> {
 
     for _ in 0..1 {
         let timer = Instant::now();
-        Acc3 {}.compute(psys.as_ref());
+        let mut acc = AccDot3::zeros(psys.len());
+        AccDot3Kernel {}.compute(&psys, &mut acc);
         let duration = timer.elapsed();
         let elapsed = (1_000_000_000 * u128::from(duration.as_secs())
             + u128::from(duration.subsec_nanos())) as f64

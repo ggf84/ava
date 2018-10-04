@@ -3,7 +3,7 @@
 #[cfg(all(feature = "nightly", test))]
 mod bench {
     use ava::{
-        gravity::{Acc0, Acc1, Acc2, Acc3, Compute, Energy},
+        gravity::Compute,
         ics::{imf::EqualMass, sdp::Plummer, Model},
         real::Real,
         sys::ParticleSystem,
@@ -28,96 +28,136 @@ mod bench {
 
     mod acc0 {
         use super::*;
+        use ava::gravity::acc0::{AccDot0, AccDot0Kernel};
 
         #[bench]
         fn compute(b: &mut Bencher) {
-            let kernel = Acc0 {};
             let psys = init_particle_system(N, 0);
-            b.iter(|| kernel.compute(psys.as_ref()));
+
+            let mut acc = AccDot0::zeros(psys.len());
+            let kernel = AccDot0Kernel {};
+
+            b.iter(|| kernel.compute(&psys, &mut acc));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
-            let kernel = Acc0 {};
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
-            b.iter(|| kernel.compute_mutual(psys1.as_ref(), psys2.as_ref()));
+
+            let mut acc1 = AccDot0::zeros(psys1.len());
+            let mut acc2 = AccDot0::zeros(psys2.len());
+            let kernel = AccDot0Kernel {};
+
+            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
         }
     }
 
     mod acc1 {
         use super::*;
+        use ava::gravity::acc1::{AccDot1, AccDot1Kernel};
 
         #[bench]
         fn compute(b: &mut Bencher) {
-            let kernel = Acc1 {};
             let psys = init_particle_system(N, 0);
-            b.iter(|| kernel.compute(psys.as_ref()));
+
+            let mut acc = AccDot1::zeros(psys.len());
+            let kernel = AccDot1Kernel {};
+
+            b.iter(|| kernel.compute(&psys, &mut acc));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
-            let kernel = Acc1 {};
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
-            b.iter(|| kernel.compute_mutual(psys1.as_ref(), psys2.as_ref()));
+
+            let mut acc1 = AccDot1::zeros(psys1.len());
+            let mut acc2 = AccDot1::zeros(psys2.len());
+            let kernel = AccDot1Kernel {};
+
+            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
         }
     }
 
     mod acc2 {
         use super::*;
+        use ava::gravity::acc2::{AccDot2, AccDot2Kernel};
 
         #[bench]
         fn compute(b: &mut Bencher) {
-            let kernel = Acc2 {};
             let psys = init_particle_system(N, 0);
-            b.iter(|| kernel.compute(psys.as_ref()));
+
+            let mut acc = AccDot2::zeros(psys.len());
+            let kernel = AccDot2Kernel {};
+
+            b.iter(|| kernel.compute(&psys, &mut acc));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
-            let kernel = Acc2 {};
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
-            b.iter(|| kernel.compute_mutual(psys1.as_ref(), psys2.as_ref()));
+
+            let mut acc1 = AccDot2::zeros(psys1.len());
+            let mut acc2 = AccDot2::zeros(psys2.len());
+            let kernel = AccDot2Kernel {};
+
+            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
         }
     }
 
     mod acc3 {
         use super::*;
+        use ava::gravity::acc3::{AccDot3, AccDot3Kernel};
 
         #[bench]
         fn compute(b: &mut Bencher) {
-            let kernel = Acc3 {};
             let psys = init_particle_system(N, 0);
-            b.iter(|| kernel.compute(psys.as_ref()));
+
+            let mut acc = AccDot3::zeros(psys.len());
+            let kernel = AccDot3Kernel {};
+
+            b.iter(|| kernel.compute(&psys, &mut acc));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
-            let kernel = Acc3 {};
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
-            b.iter(|| kernel.compute_mutual(psys1.as_ref(), psys2.as_ref()));
+
+            let mut acc1 = AccDot3::zeros(psys1.len());
+            let mut acc2 = AccDot3::zeros(psys2.len());
+            let kernel = AccDot3Kernel {};
+
+            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
         }
     }
 
     mod energy {
         use super::*;
+        use ava::gravity::energy::{Energy, EnergyKernel};
 
         #[bench]
         fn compute(b: &mut Bencher) {
-            let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
             let psys = init_particle_system(N, 0);
-            b.iter(|| kernel.compute(psys.as_ref()));
+
+            let mut energy = Energy::zeros(psys.len());
+            let kernel = EnergyKernel {};
+
+            b.iter(|| kernel.compute(&psys, &mut energy));
         }
 
         #[bench]
         fn compute_mutual(b: &mut Bencher) {
-            let kernel = Energy::new(1.0); // Pass mtot=1 because here we are not interested in the actual result.
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
-            b.iter(|| kernel.compute_mutual(psys1.as_ref(), psys2.as_ref()));
+
+            let mut energy1 = Energy::zeros(psys1.len());
+            let mut energy2 = Energy::zeros(psys2.len());
+            let kernel = EnergyKernel {};
+
+            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut energy1, &mut energy2));
         }
     }
 }

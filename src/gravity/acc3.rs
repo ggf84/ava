@@ -32,14 +32,14 @@ pub struct Src {
 
 #[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
 #[soa_derive = "Clone, Debug, PartialEq"]
-pub struct Dst {
+struct Dst {
     adot0: [Real; 3],
     adot1: [Real; 3],
     adot2: [Real; 3],
     adot3: [Real; 3],
 }
 
-impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
+impl<'a> ToSoA<SrcSoA> for SrcSlice<'a> {
     fn to_soa(&self, ps_src: &mut [SrcSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -59,7 +59,7 @@ impl<'a> ToSoA<[SrcSoA]> for SrcSlice<'a> {
     }
 }
 
-impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
+impl<'a> FromSoA<SrcSoA, DstSoA> for DstSliceMut<'a> {
     fn from_soa(&mut self, ps_src: &[SrcSoA], ps_dst: &[DstSoA]) {
         let n = self.len();
         let mut jj = 0;
@@ -78,10 +78,71 @@ impl<'a> FromSoA<[SrcSoA], [DstSoA]> for DstSliceMut<'a> {
     }
 }
 
-pub struct Acc3 {}
+pub struct AccDot3Kernel {}
 impl_kernel!(SrcSlice, DstSliceMut, SrcSoA, DstSoA, 64);
 
-impl Kernel for Acc3 {
+#[derive(Clone, Debug, PartialEq)]
+pub struct AccDot3(
+    pub Vec<[Real; 3]>,
+    pub Vec<[Real; 3]>,
+    pub Vec<[Real; 3]>,
+    pub Vec<[Real; 3]>,
+);
+impl AccDot3 {
+    pub fn zeros(n: usize) -> Self {
+        AccDot3(
+            vec![Default::default(); n],
+            vec![Default::default(); n],
+            vec![Default::default(); n],
+            vec![Default::default(); n],
+        )
+    }
+}
+impl<'a> From<&'a mut AccDot3> for DstSliceMut<'a> {
+    fn from(acc: &'a mut AccDot3) -> Self {
+        DstSliceMut {
+            adot0: &mut acc.0[..],
+            adot1: &mut acc.1[..],
+            adot2: &mut acc.2[..],
+            adot3: &mut acc.3[..],
+        }
+    }
+}
+
+impl<'a, T> From<&'a T> for SrcSlice<'a>
+where
+    T: AsRef<ParticleSystem>,
+{
+    fn from(ps: &'a T) -> Self {
+        let ps = ps.as_ref();
+        SrcSlice {
+            eps: &ps.attrs.eps[..],
+            mass: &ps.attrs.mass[..],
+            rdot0: &ps.attrs.pos[..],
+            rdot1: &ps.attrs.vel[..],
+            rdot2: &ps.attrs.acc0[..],
+            rdot3: &ps.attrs.acc1[..],
+        }
+    }
+}
+
+impl<T: Into<SrcSlice<'_>>> Compute<T> for AccDot3Kernel {
+    type Output = AccDot3;
+    fn compute(&self, src: T, dst: &mut Self::Output) {
+        let src = src.into();
+        let mut dst = dst.into();
+        self.triangle(&src, &mut dst);
+    }
+    fn compute_mutual(&self, isrc: T, jsrc: T, idst: &mut Self::Output, jdst: &mut Self::Output) {
+        let isrc = isrc.into();
+        let jsrc = jsrc.into();
+        let mut idst = idst.into();
+        let mut jdst = jdst.into();
+        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
+    }
+}
+
+impl Kernel for AccDot3Kernel {
     // flop count: 157
     fn p2p(
         &self,
@@ -252,81 +313,6 @@ impl Kernel for Acc3 {
     }
 }
 
-impl<'a, 'b: 'a> From<&'b ParticleSystem> for SrcSlice<'a> {
-    fn from(ps: &'b ParticleSystem) -> Self {
-        SrcSlice {
-            eps: &ps.attrs.eps[..],
-            mass: &ps.attrs.mass[..],
-            rdot0: &ps.attrs.pos[..],
-            rdot1: &ps.attrs.vel[..],
-            rdot2: &ps.attrs.acc0[..],
-            rdot3: &ps.attrs.acc1[..],
-        }
-    }
-}
-
-impl<S: Into<SrcSlice<'_>>> Compute<S> for Acc3 {
-    type Output = (
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-        Vec<[Real; 3]>,
-    );
-    /// For each particle of the system, compute the k-th derivatives
-    /// of the gravitational acceleration, for k = {0, 1, 2, 3}.
-    fn compute(&self, src: S) -> Self::Output {
-        let src = src.into();
-        let mut acc = (
-            vec![Default::default(); src.len()],
-            vec![Default::default(); src.len()],
-            vec![Default::default(); src.len()],
-            vec![Default::default(); src.len()],
-        );
-        let mut dst = DstSliceMut {
-            adot0: &mut acc.0[..],
-            adot1: &mut acc.1[..],
-            adot2: &mut acc.2[..],
-            adot3: &mut acc.3[..],
-        };
-
-        self.triangle(&src, &mut dst);
-        acc
-    }
-    /// For each particle of two disjoint systems, A and B, compute the mutual k-th derivatives
-    /// of the gravitational acceleration, for k = {0, 1, 2, 3}.
-    fn compute_mutual(&self, isrc: S, jsrc: S) -> (Self::Output, Self::Output) {
-        let isrc = isrc.into();
-        let jsrc = jsrc.into();
-        let mut iacc = (
-            vec![Default::default(); isrc.len()],
-            vec![Default::default(); isrc.len()],
-            vec![Default::default(); isrc.len()],
-            vec![Default::default(); isrc.len()],
-        );
-        let mut jacc = (
-            vec![Default::default(); jsrc.len()],
-            vec![Default::default(); jsrc.len()],
-            vec![Default::default(); jsrc.len()],
-            vec![Default::default(); jsrc.len()],
-        );
-        let mut idst = DstSliceMut {
-            adot0: &mut iacc.0[..],
-            adot1: &mut iacc.1[..],
-            adot2: &mut iacc.2[..],
-            adot3: &mut iacc.3[..],
-        };
-        let mut jdst = DstSliceMut {
-            adot0: &mut jacc.0[..],
-            adot1: &mut jacc.1[..],
-            adot2: &mut jacc.2[..],
-            adot3: &mut jacc.3[..],
-        };
-
-        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
-        (iacc, jacc)
-    }
-}
-
 #[cfg(all(feature = "nightly", test))]
 mod bench {
     use super::*;
@@ -350,7 +336,7 @@ mod bench {
 
     #[bench]
     fn p2p(b: &mut Bencher) {
-        let kernel = Acc3 {};
+        let kernel = AccDot3Kernel {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
             let mut ip_src: [SrcSoA; NTILES] = [Default::default(); NTILES];

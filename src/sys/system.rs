@@ -1,12 +1,14 @@
 use crate::{
-    gravity::Energy,
+    gravity::{
+        energy::{Energy, EnergyKernel},
+        Compute,
+    },
     real::Real,
     sys::attributes::{Attributes, AttributesVec},
 };
 use rand::{distributions::Distribution, Rng};
 use serde_derive::{Deserialize, Serialize};
 use soa_derive::{soa_zip, soa_zip_impl};
-use std::convert::{AsMut, AsRef};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParticleSystem {
@@ -71,11 +73,15 @@ impl ParticleSystem {
             self.set_eps(eps_param * 1.0); // assume rvir == 1
         }
 
-        let (ke, pe) = Energy::new(mtot).energies(self.as_ref());
+        let mut energy = Energy::zeros(self.len());
+        EnergyKernel {}.compute(&self, &mut energy);
+        let (ke, pe) = energy.reduce(mtot);
         let ke = self.scale_to_virial(q_vir, ke, pe);
         self.scale_pos_vel((ke + pe) / -0.25);
 
-        let (ke, pe) = Energy::new(mtot).energies(self.as_ref());
+        let mut energy = Energy::zeros(self.len());
+        EnergyKernel {}.compute(&self, &mut energy);
+        let (ke, pe) = energy.reduce(mtot);
         let rvir = mtot.powi(2) / (-2.0 * pe);
         eprintln!(
             "mtot: {:?}\nke: {:?}\npe: {:?}\nte: {:?}\nrvir: {:?}",

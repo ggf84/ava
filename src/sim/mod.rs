@@ -1,7 +1,14 @@
 mod hermite;
 
 use self::hermite::{Hermite4, Hermite6, Hermite8};
-use crate::{gravity::Energy, real::Real, sys::ParticleSystem};
+use crate::{
+    gravity::{
+        energy::{Energy, EnergyKernel},
+        Compute,
+    },
+    real::Real,
+    sys::ParticleSystem,
+};
 use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -179,7 +186,9 @@ struct Logger {
 impl Logger {
     fn new(psys: &ParticleSystem) -> Self {
         let mtot = psys.com_mass();
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
+        let mut energy = Energy::zeros(psys.len());
+        EnergyKernel {}.compute(&psys, &mut energy);
+        let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let te_0 = te;
         let te_n = te;
@@ -224,7 +233,9 @@ impl Logger {
         let (mtot, rcom, vcom) = psys.com_mass_pos_vel();
         let rcom = rcom.iter().fold(0.0, |s, r| s + r * r).sqrt();
         let vcom = vcom.iter().fold(0.0, |s, v| s + v * v).sqrt();
-        let (ke, pe) = Energy::new(mtot).energies(psys.as_ref());
+        let mut energy = Energy::zeros(psys.len());
+        EnergyKernel {}.compute(&psys, &mut energy);
+        let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let ve = 2.0 * ke + pe;
         let err_rel = (te - self.te_n) / self.te_n;

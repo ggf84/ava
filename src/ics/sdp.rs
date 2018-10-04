@@ -216,7 +216,7 @@ macro_rules! impl_distribution {
                     let [rx, ry, rz] = to_xyz(r * Self::R_SCALE_FACTOR, rng);
 
                     let sigma2_1d = Self::sigma2_1d(r);
-                    let v_normal = Normal::new(0.0, (sigma2_1d * Self::V2_SCALE_FACTOR).sqrt() as f64);
+                    let v_normal = Normal::new(0.0, f64::from((sigma2_1d * Self::V2_SCALE_FACTOR).sqrt()));
                     let vx = v_normal.sample(rng) as Real;
                     let vy = v_normal.sample(rng) as Real;
                     let vz = v_normal.sample(rng) as Real;
