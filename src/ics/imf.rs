@@ -30,9 +30,9 @@ pub struct Maschberger2013 {
 }
 
 impl Maschberger2013 {
-    const MU: Real = 0.2;
     const ALPHA: Real = 2.3;
     const BETA: Real = 1.4;
+    const MU: Real = 0.2;
 
     pub fn new(mmin: Real, mmax: Real) -> Self {
         assert!(mmin > 0.0, "Maschberger2013::new called with `mmin <= 0.0`");
