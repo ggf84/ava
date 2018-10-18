@@ -1,131 +1,166 @@
-use super::{loop1, loop2, loop3, Compute, FromSoA, ToSoA, TILE};
+use super::{loop2, loop3, Compute, FromSoA, SplitAt, SplitAtMut, ToSoA};
 use crate::{real::Real, sys::ParticleSystem};
-use soa_derive::StructOfArray;
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
-struct Derivs<T>([T; 3]);
-
-#[repr(align(16))]
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
-struct SrcSoA {
-    eps: [Real; TILE],
-    mass: [Real; TILE],
-    rdot: Derivs<[Real; TILE]>,
-}
+const THRESHOLD: usize = 32;
+const TILE: usize = 16 / std::mem::size_of::<Real>();
 
 #[repr(align(16))]
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
-struct DstSoA {
-    adot: Derivs<[Real; TILE]>,
+#[derive(Copy, Clone, Default)]
+struct SoaDerivs<T>([T; 3]);
+
+#[repr(align(16))]
+#[derive(Copy, Clone, Default)]
+pub struct SoaData {
+    eps: [Real; THRESHOLD],
+    mass: [Real; THRESHOLD],
+    rdot: SoaDerivs<[Real; THRESHOLD]>,
+    adot: SoaDerivs<[Real; THRESHOLD]>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
-#[soa_derive = "Clone, Debug, PartialEq"]
-pub struct Src {
-    eps: Real,
-    mass: Real,
-    rdot0: [Real; 3],
+#[derive(Clone, Debug, PartialEq)]
+pub struct Derivs0(pub Vec<[Real; 3]>);
+impl Derivs0 {
+    pub fn zeros(n: usize) -> Self {
+        Derivs0(vec![Default::default(); n])
+    }
+
+    pub fn as_slice(&self) -> Derivs0Slice<'_> {
+        Derivs0Slice(&self.0[..])
+    }
+
+    pub fn as_mut_slice(&mut self) -> Derivs0SliceMut<'_> {
+        Derivs0SliceMut(&mut self.0[..])
+    }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, StructOfArray)]
-#[soa_derive = "Clone, Debug, PartialEq"]
-struct Dst {
-    adot0: [Real; 3],
+pub struct Derivs0Slice<'a>(pub &'a [[Real; 3]]);
+impl<'a, 'b: 'a> SplitAt<'a> for Derivs0Slice<'b> {
+    type Output = Derivs0Slice<'a>;
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output) {
+        let (lo0, hi0) = self.0.split_at(mid);
+        (Derivs0Slice(lo0), Derivs0Slice(hi0))
+    }
 }
 
-impl<'a> ToSoA<SrcSoA> for SrcSlice<'a> {
-    fn to_soa(&self, ps_src: &mut [SrcSoA]) {
+pub struct Derivs0SliceMut<'a>(pub &'a mut [[Real; 3]]);
+impl<'a, 'b: 'a> SplitAtMut<'a> for Derivs0SliceMut<'b> {
+    type Output = Derivs0SliceMut<'a>;
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn split_at_mut(&'a mut self, mid: usize) -> (Self::Output, Self::Output) {
+        let (lo0, hi0) = self.0.split_at_mut(mid);
+        (Derivs0SliceMut(lo0), Derivs0SliceMut(hi0))
+    }
+}
+impl<'a> FromSoA for Derivs0SliceMut<'a> {
+    type SoaType = SoaData;
+
+    fn from_soa(&mut self, p: &Self::SoaType) {
         let n = self.len();
-        let mut jj = 0;
-        for p_src in ps_src.iter_mut() {
-            for j in 0..TILE {
-                if jj < n {
-                    p_src.eps[j] = self.eps[jj];
-                    p_src.mass[j] = self.mass[jj];
-                    loop1(3, |k| p_src.rdot.0[k][j] = self.rdot0[jj][k]);
-                    jj += 1;
-                }
+        for j in 0..n {
+            let minv = 1.0 / p.mass[j];
+            for k in 0..3 {
+                self.0[j][k] += p.adot.0[k][j] * minv;
             }
         }
     }
 }
 
-impl<'a> FromSoA<SrcSoA, DstSoA> for DstSliceMut<'a> {
-    fn from_soa(&mut self, ps_src: &[SrcSoA], ps_dst: &[DstSoA]) {
+pub struct InpuData0Slice<'a> {
+    pub eps: &'a [Real],
+    pub mass: &'a [Real],
+    pub rdot: Derivs0Slice<'a>,
+}
+impl<'a> InpuData0Slice<'a> {
+    pub fn new(eps: &'a [Real], mass: &'a [Real], rdot: Derivs0Slice<'a>) -> Self {
+        InpuData0Slice { eps, mass, rdot }
+    }
+}
+impl<'a, 'b: 'a> SplitAt<'a> for InpuData0Slice<'b> {
+    type Output = InpuData0Slice<'a>;
+
+    fn len(&self) -> usize {
+        self.rdot.len()
+    }
+
+    fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output) {
+        let (eps_lo, eps_hi) = self.eps.split_at(mid);
+        let (mass_lo, mass_hi) = self.mass.split_at(mid);
+        let (rdot_lo, rdot_hi) = self.rdot.split_at(mid);
+        (
+            InpuData0Slice {
+                eps: eps_lo,
+                mass: mass_lo,
+                rdot: rdot_lo,
+            },
+            InpuData0Slice {
+                eps: eps_hi,
+                mass: mass_hi,
+                rdot: rdot_hi,
+            },
+        )
+    }
+}
+impl<'a> ToSoA for InpuData0Slice<'a> {
+    type SoaType = SoaData;
+
+    fn to_soa(&self, p: &mut Self::SoaType) {
         let n = self.len();
-        let mut jj = 0;
-        for (p_src, p_dst) in ps_src.iter().zip(ps_dst.iter()) {
-            for j in 0..TILE {
-                if jj < n {
-                    let minv = 1.0 / p_src.mass[j];
-                    loop1(3, |k| self.adot0[jj][k] += p_dst.adot.0[k][j] * minv);
-                    jj += 1;
-                }
+        p.eps[..n].copy_from_slice(&self.eps[..n]);
+        p.mass[..n].copy_from_slice(&self.mass[..n]);
+        for j in 0..n {
+            for k in 0..3 {
+                p.rdot.0[k][j] = self.rdot.0[j][k];
             }
+        }
+    }
+}
+impl<'a> From<&'a ParticleSystem> for InpuData0Slice<'a> {
+    fn from(ps: &'a ParticleSystem) -> Self {
+        InpuData0Slice {
+            eps: &ps.attrs.eps[..],
+            mass: &ps.attrs.mass[..],
+            rdot: Derivs0Slice(&ps.attrs.pos[..]),
         }
     }
 }
 
 pub struct AccDot0Kernel {}
-impl_kernel!(SrcSlice, DstSliceMut, SrcSoA, DstSoA, 64);
+impl_kernel!(InpuData0Slice, Derivs0SliceMut, SoaData, THRESHOLD);
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct AccDot0(pub Vec<[Real; 3]>);
-impl AccDot0 {
-    pub fn zeros(n: usize) -> Self {
-        AccDot0(vec![Default::default(); n])
-    }
-}
-impl<'a> From<&'a mut AccDot0> for DstSliceMut<'a> {
-    fn from(acc: &'a mut AccDot0) -> Self {
-        DstSliceMut {
-            adot0: &mut acc.0[..],
-        }
-    }
-}
+impl<'a> Compute<'a> for AccDot0Kernel {
+    type Input = InpuData0Slice<'a>;
+    type Output = Derivs0SliceMut<'a>;
 
-impl<'a, T> From<&'a T> for SrcSlice<'a>
-where
-    T: AsRef<ParticleSystem>,
-{
-    fn from(ps: &'a T) -> Self {
-        let ps = ps.as_ref();
-        SrcSlice {
-            eps: &ps.attrs.eps[..],
-            mass: &ps.attrs.mass[..],
-            rdot0: &ps.attrs.pos[..],
-        }
+    fn compute(&self, src: &Self::Input, dst: &mut Self::Output) {
+        self.triangle(src, dst);
     }
-}
 
-impl<T: Into<SrcSlice<'_>>> Compute<T> for AccDot0Kernel {
-    type Output = AccDot0;
-    fn compute(&self, src: T, dst: &mut Self::Output) {
-        let src = src.into();
-        let mut dst = dst.into();
-        self.triangle(&src, &mut dst);
-    }
-    fn compute_mutual(&self, isrc: T, jsrc: T, idst: &mut Self::Output, jdst: &mut Self::Output) {
-        let isrc = isrc.into();
-        let jsrc = jsrc.into();
-        let mut idst = idst.into();
-        let mut jdst = jdst.into();
-        self.rectangle(&isrc, &mut idst, &jsrc, &mut jdst);
+    fn compute_mutual(
+        &self,
+        isrc: &Self::Input,
+        jsrc: &Self::Input,
+        idst: &mut Self::Output,
+        jdst: &mut Self::Output,
+    ) {
+        self.rectangle(isrc, jsrc, idst, jdst);
     }
 }
 
 impl Kernel for AccDot0Kernel {
     // flop count: 27
-    fn p2p(
-        &self,
-        ip_src: &[SrcSoA],
-        ip_dst: &mut [DstSoA],
-        jp_src: &[SrcSoA],
-        jp_dst: &mut [DstSoA],
-    ) {
-        for (ip_src, ip_dst) in ip_src.iter().zip(ip_dst.iter_mut()) {
-            for (jp_src, jp_dst) in jp_src.iter().zip(jp_dst.iter_mut()) {
-                let mut drdot: Derivs<[[Real; TILE]; TILE]> = Default::default();
+    fn p2p(&self, ni: usize, nj: usize, ip: &mut SoaData, jp: &mut SoaData) {
+        for ii in (0..ni).step_by(TILE) {
+            for jj in (0..nj).step_by(TILE) {
+                let mut drdot: SoaDerivs<[[Real; TILE]; TILE]> = Default::default();
                 let mut s00: [[Real; TILE]; TILE] = Default::default();
                 let mut rinv1: [[Real; TILE]; TILE] = Default::default();
                 let mut rinv2: [[Real; TILE]; TILE] = Default::default();
@@ -133,14 +168,14 @@ impl Kernel for AccDot0Kernel {
                 let mut mm_r3: [[Real; TILE]; TILE] = Default::default();
 
                 loop3(3, TILE, TILE, |k, i, j| {
-                    drdot.0[k][i][j] = ip_src.rdot.0[k][j ^ i] - jp_src.rdot.0[k][j];
+                    drdot.0[k][i][j] = ip.rdot.0[k][ii + (j ^ i)] - jp.rdot.0[k][jj + j];
                 });
 
                 loop2(TILE, TILE, |i, j| {
-                    mm[i][j] = ip_src.mass[j ^ i] * jp_src.mass[j];
+                    mm[i][j] = ip.mass[ii + (j ^ i)] * jp.mass[jj + j];
                 });
                 loop2(TILE, TILE, |i, j| {
-                    s00[i][j] = ip_src.eps[j ^ i] * jp_src.eps[j];
+                    s00[i][j] = ip.eps[ii + (j ^ i)] * jp.eps[jj + j];
                 });
 
                 loop3(3, TILE, TILE, |k, i, j| {
@@ -158,10 +193,10 @@ impl Kernel for AccDot0Kernel {
                 });
 
                 loop3(3, TILE, TILE, |k, i, j| {
-                    ip_dst.adot.0[k][j ^ i] -= mm_r3[i][j] * drdot.0[k][i][j];
+                    ip.adot.0[k][ii + (j ^ i)] -= mm_r3[i][j] * drdot.0[k][i][j];
                 });
                 loop3(3, TILE, TILE, |k, i, j| {
-                    jp_dst.adot.0[k][j] += mm_r3[i][j] * drdot.0[k][i][j];
+                    jp.adot.0[k][jj + j] += mm_r3[i][j] * drdot.0[k][i][j];
                 });
             }
         }
@@ -177,14 +212,15 @@ mod bench {
     };
     use test::Bencher;
 
-    const NTILES: usize = 256 / TILE;
+    const NTILES: usize = 256 / THRESHOLD;
 
-    impl Distribution<SrcSoA> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SrcSoA {
-            SrcSoA {
+    impl Distribution<SoaData> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SoaData {
+            SoaData {
                 eps: rng.gen(),
                 mass: rng.gen(),
-                rdot: Derivs(rng.gen()),
+                rdot: SoaDerivs(rng.gen()),
+                adot: Default::default(),
             }
         }
     }
@@ -194,19 +230,16 @@ mod bench {
         let kernel = AccDot0Kernel {};
         let mut rng = StdRng::from_seed([0; 32]);
         b.iter(|| {
-            let mut ip_src: [SrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut ip_dst: [DstSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_src: [SrcSoA; NTILES] = [Default::default(); NTILES];
-            let mut jp_dst: [DstSoA; NTILES] = [Default::default(); NTILES];
-            ip_src.iter_mut().for_each(|p| *p = rng.gen());
-            jp_src.iter_mut().for_each(|p| *p = rng.gen());
-            kernel.p2p(
-                &ip_src[..NTILES],
-                &mut ip_dst[..NTILES],
-                &jp_src[..NTILES],
-                &mut jp_dst[..NTILES],
-            );
-            (ip_dst, jp_dst)
+            let mut ips: [SoaData; NTILES] = [Default::default(); NTILES];
+            let mut jps: [SoaData; NTILES] = [Default::default(); NTILES];
+            ips.iter_mut().for_each(|p| *p = rng.gen());
+            jps.iter_mut().for_each(|p| *p = rng.gen());
+            for i in 0..NTILES {
+                for j in 0..NTILES {
+                    kernel.p2p(THRESHOLD, THRESHOLD, &mut ips[i], &mut jps[j]);
+                }
+            }
+            (ips, jps)
         });
     }
 }

@@ -16,26 +16,26 @@ pub struct ParticleSystem {
     pub attrs: AttributesVec,
 }
 
-impl AsRef<Self> for ParticleSystem {
-    fn as_ref(&self) -> &Self {
-        self
-    }
-}
-impl AsMut<Self> for ParticleSystem {
-    fn as_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
 impl ParticleSystem {
     pub fn new() -> Self {
         Default::default()
     }
+
     pub fn len(&self) -> usize {
         self.attrs.len()
     }
+
     pub fn is_empty(&self) -> bool {
         self.attrs.is_empty()
+    }
+}
+
+impl ParticleSystem {
+    pub fn as_slice<'a, T>(&'a self) -> T
+    where
+        T: From<&'a Self>,
+    {
+        T::from(self)
     }
 }
 
@@ -58,11 +58,13 @@ impl ParticleSystem {
         }
         ParticleSystem { time: 0.0, attrs }
     }
+
     /// Convert the system to standard units (G = M = -4E = 1).
     pub fn into_standard_units(mut self, q_vir: Real, eps_param: Option<Real>) -> Self {
         self.convert_to_standard_units(q_vir, eps_param);
         self
     }
+
     fn convert_to_standard_units(&mut self, q_vir: Real, eps_param: Option<Real>) {
         let (mtot, [rx, ry, rz], [vx, vy, vz]) = self.com_mass_pos_vel();
         // reset center-of-mass to the origin of coordinates.
@@ -74,13 +76,13 @@ impl ParticleSystem {
         }
 
         let mut energy = Energy::zeros(self.len());
-        EnergyKernel {}.compute(&self, &mut energy);
+        EnergyKernel {}.compute(&self.as_slice(), &mut energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let ke = self.scale_to_virial(q_vir, ke, pe);
         self.scale_pos_vel((ke + pe) / -0.25);
 
         let mut energy = Energy::zeros(self.len());
-        EnergyKernel {}.compute(&self, &mut energy);
+        EnergyKernel {}.compute(&self.as_slice(), &mut energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let rvir = mtot.powi(2) / (-2.0 * pe);
         eprintln!(
@@ -92,6 +94,7 @@ impl ParticleSystem {
             rvir
         );
     }
+
     /// Set the softening parameter.
     fn set_eps(&mut self, eps_scale: Real) {
         let n = self.len();
@@ -108,6 +111,7 @@ impl ParticleSystem {
     pub fn com_mass(&self) -> Real {
         self.attrs.mass.iter().sum()
     }
+
     /// Get the total mass, position and velocity coordinates of the center-of-mass.
     pub fn com_mass_pos_vel(&self) -> (Real, [Real; 3], [Real; 3]) {
         let mtot = self.com_mass();
@@ -125,6 +129,7 @@ impl ParticleSystem {
         vcom.iter_mut().for_each(|v| *v /= mtot);
         (mtot, rcom, vcom)
     }
+
     /// Moves the center-of-mass by the given position and velocity displacements.
     pub fn com_move_by(&mut self, dr: [Real; 3], dv: [Real; 3]) {
         for (r, v) in soa_zip!(&mut self.attrs, [mut pos, mut vel]) {
@@ -142,6 +147,7 @@ impl ParticleSystem {
             sum + *m
         })
     }
+
     /// Scale positions and velocities by r_scale (v_scale is computed from r_scale).
     pub fn scale_pos_vel(&mut self, r_scale: Real) {
         let v_scale = 1.0 / r_scale.sqrt();
@@ -156,6 +162,7 @@ impl ParticleSystem {
             .flatten()
             .for_each(|v| *v *= v_scale);
     }
+
     /// Scale velocities to a given virial ratio. Returns the kinetic energy after the scaling.
     pub fn scale_to_virial(&mut self, q_vir: Real, ke: Real, pe: Real) -> Real {
         assert!(q_vir < 1.0);

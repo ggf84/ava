@@ -40,6 +40,7 @@ impl Counter {
 }
 impl Add for Counter {
     type Output = Counter;
+
     fn add(self, other: Counter) -> Counter {
         Counter {
             steps: self.steps + other.steps,
@@ -57,7 +58,7 @@ impl AddAssign for Counter {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TimeStepScheme {
     Constant { dt: Real },
-    Adaptive { shared: bool },
+    Adaptive { is_shared: bool },
 }
 impl TimeStepScheme {
     pub fn constant(dt: Real) -> Self {
@@ -65,21 +66,24 @@ impl TimeStepScheme {
             dt: to_power_of_two(dt),
         }
     }
+
     pub fn adaptive_shared() -> Self {
-        TimeStepScheme::Adaptive { shared: true }
+        TimeStepScheme::Adaptive { is_shared: true }
     }
+
     pub fn adaptive_block() -> Self {
-        TimeStepScheme::Adaptive { shared: false }
+        TimeStepScheme::Adaptive { is_shared: false }
     }
+
     fn match_dt(&self, psys: &mut ParticleSystem) -> Real {
         match *self {
             TimeStepScheme::Constant { dt } => {
                 psys.attrs.dt.iter_mut().for_each(|idt| *idt = dt);
                 dt
             }
-            TimeStepScheme::Adaptive { shared } => {
+            TimeStepScheme::Adaptive { is_shared } => {
                 let dt = psys.attrs.dt[0];
-                if shared {
+                if is_shared {
                     psys.attrs.dt.iter_mut().for_each(|idt| *idt = dt);
                 }
                 dt
@@ -98,9 +102,11 @@ impl Integrator {
     pub fn hermite4(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Integrator::H4(Hermite4::new(tstep_scheme, eta, npec))
     }
+
     pub fn hermite6(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Integrator::H6(Hermite6::new(tstep_scheme, eta, npec))
     }
+
     pub fn hermite8(tstep_scheme: TimeStepScheme, eta: Real, npec: u8) -> Self {
         Integrator::H8(Hermite8::new(tstep_scheme, eta, npec))
     }
@@ -148,6 +154,7 @@ impl Simulation {
             logger,
         }
     }
+
     pub fn evolve(&mut self, tend: Real, instant: &mut Instant) -> Result<(), std::io::Error> {
         while self.psys.time < tend {
             let counter = match &self.integrator {
@@ -166,6 +173,7 @@ impl Simulation {
         }
         Ok(())
     }
+
     fn write_restart_file(&self) -> Result<(), std::io::Error> {
         let file = File::create("res.sim")?;
         let mut writer = BufWriter::new(file);
@@ -187,7 +195,7 @@ impl Logger {
     fn new(psys: &ParticleSystem) -> Self {
         let mtot = psys.com_mass();
         let mut energy = Energy::zeros(psys.len());
-        EnergyKernel {}.compute(&psys, &mut energy);
+        EnergyKernel {}.compute(&psys.as_slice(), &mut energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let te_0 = te;
@@ -229,12 +237,13 @@ impl Logger {
             duration_cum: Default::default(),
         }
     }
+
     fn print_log(&mut self, psys: &ParticleSystem, instant: &mut Instant) {
         let (mtot, rcom, vcom) = psys.com_mass_pos_vel();
         let rcom = rcom.iter().fold(0.0, |s, r| s + r * r).sqrt();
         let vcom = vcom.iter().fold(0.0, |s, v| s + v * v).sqrt();
         let mut energy = Energy::zeros(psys.len());
-        EnergyKernel {}.compute(&psys, &mut energy);
+        EnergyKernel {}.compute(&psys.as_slice(), &mut energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let ve = 2.0 * ke + pe;

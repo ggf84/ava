@@ -28,16 +28,16 @@ mod bench {
 
     mod acc0 {
         use super::*;
-        use ava::gravity::acc0::{AccDot0, AccDot0Kernel};
+        use ava::gravity::acc0::{AccDot0Kernel, Derivs0};
 
         #[bench]
         fn compute(b: &mut Bencher) {
             let psys = init_particle_system(N, 0);
 
-            let mut acc = AccDot0::zeros(psys.len());
+            let mut acc = Derivs0::zeros(psys.len());
             let kernel = AccDot0Kernel {};
 
-            b.iter(|| kernel.compute(&psys, &mut acc));
+            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
         }
 
         #[bench]
@@ -45,26 +45,33 @@ mod bench {
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
 
-            let mut acc1 = AccDot0::zeros(psys1.len());
-            let mut acc2 = AccDot0::zeros(psys2.len());
+            let mut acc1 = Derivs0::zeros(psys1.len());
+            let mut acc2 = Derivs0::zeros(psys2.len());
             let kernel = AccDot0Kernel {};
 
-            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
+            b.iter(|| {
+                kernel.compute_mutual(
+                    &psys1.as_slice(),
+                    &psys2.as_slice(),
+                    &mut acc1.as_mut_slice(),
+                    &mut acc2.as_mut_slice(),
+                )
+            });
         }
     }
 
     mod acc1 {
         use super::*;
-        use ava::gravity::acc1::{AccDot1, AccDot1Kernel};
+        use ava::gravity::acc1::{AccDot1Kernel, Derivs1};
 
         #[bench]
         fn compute(b: &mut Bencher) {
             let psys = init_particle_system(N, 0);
 
-            let mut acc = AccDot1::zeros(psys.len());
+            let mut acc = Derivs1::zeros(psys.len());
             let kernel = AccDot1Kernel {};
 
-            b.iter(|| kernel.compute(&psys, &mut acc));
+            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
         }
 
         #[bench]
@@ -72,26 +79,33 @@ mod bench {
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
 
-            let mut acc1 = AccDot1::zeros(psys1.len());
-            let mut acc2 = AccDot1::zeros(psys2.len());
+            let mut acc1 = Derivs1::zeros(psys1.len());
+            let mut acc2 = Derivs1::zeros(psys2.len());
             let kernel = AccDot1Kernel {};
 
-            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
+            b.iter(|| {
+                kernel.compute_mutual(
+                    &psys1.as_slice(),
+                    &psys2.as_slice(),
+                    &mut acc1.as_mut_slice(),
+                    &mut acc2.as_mut_slice(),
+                )
+            });
         }
     }
 
     mod acc2 {
         use super::*;
-        use ava::gravity::acc2::{AccDot2, AccDot2Kernel};
+        use ava::gravity::acc2::{AccDot2Kernel, Derivs2};
 
         #[bench]
         fn compute(b: &mut Bencher) {
             let psys = init_particle_system(N, 0);
 
-            let mut acc = AccDot2::zeros(psys.len());
+            let mut acc = Derivs2::zeros(psys.len());
             let kernel = AccDot2Kernel {};
 
-            b.iter(|| kernel.compute(&psys, &mut acc));
+            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
         }
 
         #[bench]
@@ -99,26 +113,33 @@ mod bench {
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
 
-            let mut acc1 = AccDot2::zeros(psys1.len());
-            let mut acc2 = AccDot2::zeros(psys2.len());
+            let mut acc1 = Derivs2::zeros(psys1.len());
+            let mut acc2 = Derivs2::zeros(psys2.len());
             let kernel = AccDot2Kernel {};
 
-            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
+            b.iter(|| {
+                kernel.compute_mutual(
+                    &psys1.as_slice(),
+                    &psys2.as_slice(),
+                    &mut acc1.as_mut_slice(),
+                    &mut acc2.as_mut_slice(),
+                )
+            });
         }
     }
 
     mod acc3 {
         use super::*;
-        use ava::gravity::acc3::{AccDot3, AccDot3Kernel};
+        use ava::gravity::acc3::{AccDot3Kernel, Derivs3};
 
         #[bench]
         fn compute(b: &mut Bencher) {
             let psys = init_particle_system(N, 0);
 
-            let mut acc = AccDot3::zeros(psys.len());
+            let mut acc = Derivs3::zeros(psys.len());
             let kernel = AccDot3Kernel {};
 
-            b.iter(|| kernel.compute(&psys, &mut acc));
+            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
         }
 
         #[bench]
@@ -126,11 +147,18 @@ mod bench {
             let psys1 = init_particle_system(N, 1);
             let psys2 = init_particle_system(N, 2);
 
-            let mut acc1 = AccDot3::zeros(psys1.len());
-            let mut acc2 = AccDot3::zeros(psys2.len());
+            let mut acc1 = Derivs3::zeros(psys1.len());
+            let mut acc2 = Derivs3::zeros(psys2.len());
             let kernel = AccDot3Kernel {};
 
-            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut acc1, &mut acc2));
+            b.iter(|| {
+                kernel.compute_mutual(
+                    &psys1.as_slice(),
+                    &psys2.as_slice(),
+                    &mut acc1.as_mut_slice(),
+                    &mut acc2.as_mut_slice(),
+                )
+            });
         }
     }
 
@@ -145,7 +173,7 @@ mod bench {
             let mut energy = Energy::zeros(psys.len());
             let kernel = EnergyKernel {};
 
-            b.iter(|| kernel.compute(&psys, &mut energy));
+            b.iter(|| kernel.compute(&psys.as_slice(), &mut energy.as_mut_slice()));
         }
 
         #[bench]
@@ -157,7 +185,14 @@ mod bench {
             let mut energy2 = Energy::zeros(psys2.len());
             let kernel = EnergyKernel {};
 
-            b.iter(|| kernel.compute_mutual(&psys1, &psys2, &mut energy1, &mut energy2));
+            b.iter(|| {
+                kernel.compute_mutual(
+                    &psys1.as_slice(),
+                    &psys2.as_slice(),
+                    &mut energy1.as_mut_slice(),
+                    &mut energy2.as_mut_slice(),
+                )
+            });
         }
     }
 }

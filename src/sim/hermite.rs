@@ -54,6 +54,7 @@ impl<T: Hermite> Evolver for T {
         let nact = psys.len();
         self.set_dtmax_and_sort_by_dt(dtmax, nact, psys);
     }
+
     fn evolve(&self, dtmax: Real, psys: &mut ParticleSystem) -> Counter {
         let mut counter = Counter::new();
         let tend = psys.time + dtmax;
@@ -95,20 +96,22 @@ impl Hermite for Hermite4 {
     fn npec(&self) -> u8 {
         self.npec
     }
+
     fn tstep_scheme(&self) -> &TimeStepScheme {
         &self.tstep_scheme
     }
+
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        use crate::gravity::acc0::{AccDot0, AccDot0Kernel};
-        let mut acc = AccDot0::zeros(psys.len());
-        AccDot0Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc0::{AccDot0Kernel, Derivs0};
+        let mut acc = Derivs0::zeros(psys.len());
+        AccDot0Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
 
         // If all velocities are initially zero, then acc1 == 0. This means that
         // in order to have a robust value for dt we need to compute acc2 too.
-        use crate::gravity::acc2::{AccDot2, AccDot2Kernel};
-        let mut acc = AccDot2::zeros(psys.len());
-        AccDot2Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc2::{AccDot2Kernel, Derivs2};
+        let mut acc = Derivs2::zeros(psys.len());
+        AccDot2Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
         psys.attrs.acc1 = acc.1;
         psys.attrs.acc2 = acc.2;
@@ -130,6 +133,7 @@ impl Hermite for Hermite4 {
             *tnow = time;
         }
     }
+
     fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
         psys.time += dt;
 
@@ -155,37 +159,28 @@ impl Hermite for Hermite4 {
             }
         }
     }
+
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        use crate::gravity::acc1::{AccDot1, AccDot1Kernel, SrcSlice};
-        let mut new_acc_lo = AccDot1::zeros(nact);
-        let mut new_acc_hi = AccDot1::zeros(psys.len() - nact);
+        use crate::gravity::acc1::{AccDot1Kernel, Derivs1, Derivs1Slice};
+        let mut new_acc_lo = Derivs1::zeros(nact);
+        let mut new_acc_hi = Derivs1::zeros(psys.len() - nact);
+        let src_lo = <AccDot1Kernel as Compute>::Input::new(
+            &psys.attrs.eps[..nact],
+            &psys.attrs.mass[..nact],
+            Derivs1Slice(&psys.attrs.new_pos[..nact], &psys.attrs.new_vel[..nact]),
+        );
+        let src_hi = <AccDot1Kernel as Compute>::Input::new(
+            &psys.attrs.eps[nact..],
+            &psys.attrs.mass[nact..],
+            Derivs1Slice(&psys.attrs.new_pos[nact..], &psys.attrs.new_vel[nact..]),
+        );
+        let mut dst_lo = new_acc_lo.as_mut_slice();
+        let mut dst_hi = new_acc_hi.as_mut_slice();
 
         let kernel = AccDot1Kernel {};
-        kernel.compute(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-            },
-            &mut new_acc_lo,
-        );
-        kernel.compute_mutual(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-            },
-            SrcSlice {
-                eps: &psys.attrs.eps[nact..],
-                mass: &psys.attrs.mass[nact..],
-                rdot0: &psys.attrs.new_pos[nact..],
-                rdot1: &psys.attrs.new_vel[nact..],
-            },
-            &mut new_acc_lo,
-            &mut new_acc_hi,
-        );
+        kernel.compute(&src_lo, &mut dst_lo);
+        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+
         psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc_lo.0);
         psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc_lo.1);
 
@@ -214,6 +209,7 @@ impl Hermite for Hermite4 {
             }
         }
     }
+
     fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
         for (dt, tnow, pos, vel, acc0, acc1, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1) in soa_zip!(
             &mut psys.attrs,
@@ -294,18 +290,20 @@ impl Hermite for Hermite6 {
     fn npec(&self) -> u8 {
         self.npec
     }
+
     fn tstep_scheme(&self) -> &TimeStepScheme {
         &self.tstep_scheme
     }
+
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        use crate::gravity::acc0::{AccDot0, AccDot0Kernel};
-        let mut acc = AccDot0::zeros(psys.len());
-        AccDot0Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc0::{AccDot0Kernel, Derivs0};
+        let mut acc = Derivs0::zeros(psys.len());
+        AccDot0Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
 
-        use crate::gravity::acc2::{AccDot2, AccDot2Kernel};
-        let mut acc = AccDot2::zeros(psys.len());
-        AccDot2Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc2::{AccDot2Kernel, Derivs2};
+        let mut acc = Derivs2::zeros(psys.len());
+        AccDot2Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
         psys.attrs.acc1 = acc.1;
         psys.attrs.acc2 = acc.2;
@@ -328,6 +326,7 @@ impl Hermite for Hermite6 {
             *tnow = time;
         }
     }
+
     fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
         psys.time += dt;
 
@@ -364,40 +363,36 @@ impl Hermite for Hermite6 {
             }
         }
     }
+
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        use crate::gravity::acc2::{AccDot2, AccDot2Kernel, SrcSlice};
-        let mut new_acc_lo = AccDot2::zeros(nact);
-        let mut new_acc_hi = AccDot2::zeros(psys.len() - nact);
+        use crate::gravity::acc2::{AccDot2Kernel, Derivs2, Derivs2Slice};
+        let mut new_acc_lo = Derivs2::zeros(nact);
+        let mut new_acc_hi = Derivs2::zeros(psys.len() - nact);
+        let src_lo = <AccDot2Kernel as Compute>::Input::new(
+            &psys.attrs.eps[..nact],
+            &psys.attrs.mass[..nact],
+            Derivs2Slice(
+                &psys.attrs.new_pos[..nact],
+                &psys.attrs.new_vel[..nact],
+                &psys.attrs.new_acc0[..nact],
+            ),
+        );
+        let src_hi = <AccDot2Kernel as Compute>::Input::new(
+            &psys.attrs.eps[nact..],
+            &psys.attrs.mass[nact..],
+            Derivs2Slice(
+                &psys.attrs.new_pos[nact..],
+                &psys.attrs.new_vel[nact..],
+                &psys.attrs.new_acc0[nact..],
+            ),
+        );
+        let mut dst_lo = new_acc_lo.as_mut_slice();
+        let mut dst_hi = new_acc_hi.as_mut_slice();
 
         let kernel = AccDot2Kernel {};
-        kernel.compute(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-                rdot2: &psys.attrs.new_acc0[..nact],
-            },
-            &mut new_acc_lo,
-        );
-        kernel.compute_mutual(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-                rdot2: &psys.attrs.new_acc0[..nact],
-            },
-            SrcSlice {
-                eps: &psys.attrs.eps[nact..],
-                mass: &psys.attrs.mass[nact..],
-                rdot0: &psys.attrs.new_pos[nact..],
-                rdot1: &psys.attrs.new_vel[nact..],
-                rdot2: &psys.attrs.new_acc0[nact..],
-            },
-            &mut new_acc_lo,
-            &mut new_acc_hi,
-        );
+        kernel.compute(&src_lo, &mut dst_lo);
+        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+
         psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc_lo.0);
         psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc_lo.1);
         psys.attrs.new_acc2[..nact].copy_from_slice(&new_acc_lo.2);
@@ -431,6 +426,7 @@ impl Hermite for Hermite6 {
             }
         }
     }
+
     fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
         for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2) in soa_zip!(
             &mut psys.attrs,
@@ -540,19 +536,21 @@ impl Hermite for Hermite8 {
     fn npec(&self) -> u8 {
         self.npec
     }
+
     fn tstep_scheme(&self) -> &TimeStepScheme {
         &self.tstep_scheme
     }
+
     fn init_acc_dt(&self, psys: &mut ParticleSystem) {
-        use crate::gravity::acc1::{AccDot1, AccDot1Kernel};
-        let mut acc = AccDot1::zeros(psys.len());
-        AccDot1Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc1::{AccDot1Kernel, Derivs1};
+        let mut acc = Derivs1::zeros(psys.len());
+        AccDot1Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
         psys.attrs.acc1 = acc.1;
 
-        use crate::gravity::acc3::{AccDot3, AccDot3Kernel};
-        let mut acc = AccDot3::zeros(psys.len());
-        AccDot3Kernel {}.compute(&psys, &mut acc);
+        use crate::gravity::acc3::{AccDot3Kernel, Derivs3};
+        let mut acc = Derivs3::zeros(psys.len());
+        AccDot3Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
         psys.attrs.acc0 = acc.0;
         psys.attrs.acc1 = acc.1;
         psys.attrs.acc2 = acc.2;
@@ -583,6 +581,7 @@ impl Hermite for Hermite8 {
             *tnow = time;
         }
     }
+
     fn predict(&self, dt: Real, psys: &mut ParticleSystem) {
         psys.time += dt;
 
@@ -648,43 +647,38 @@ impl Hermite for Hermite8 {
             }
         }
     }
+
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        use crate::gravity::acc3::{AccDot3, AccDot3Kernel, SrcSlice};
-        let mut new_acc_lo = AccDot3::zeros(nact);
-        let mut new_acc_hi = AccDot3::zeros(psys.len() - nact);
+        use crate::gravity::acc3::{AccDot3Kernel, Derivs3, Derivs3Slice};
+        let mut new_acc_lo = Derivs3::zeros(nact);
+        let mut new_acc_hi = Derivs3::zeros(psys.len() - nact);
+        let src_lo = <AccDot3Kernel as Compute>::Input::new(
+            &psys.attrs.eps[..nact],
+            &psys.attrs.mass[..nact],
+            Derivs3Slice(
+                &psys.attrs.new_pos[..nact],
+                &psys.attrs.new_vel[..nact],
+                &psys.attrs.new_acc0[..nact],
+                &psys.attrs.new_acc1[..nact],
+            ),
+        );
+        let src_hi = <AccDot3Kernel as Compute>::Input::new(
+            &psys.attrs.eps[nact..],
+            &psys.attrs.mass[nact..],
+            Derivs3Slice(
+                &psys.attrs.new_pos[nact..],
+                &psys.attrs.new_vel[nact..],
+                &psys.attrs.new_acc0[nact..],
+                &psys.attrs.new_acc1[nact..],
+            ),
+        );
+        let mut dst_lo = new_acc_lo.as_mut_slice();
+        let mut dst_hi = new_acc_hi.as_mut_slice();
 
         let kernel = AccDot3Kernel {};
-        kernel.compute(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-                rdot2: &psys.attrs.new_acc0[..nact],
-                rdot3: &psys.attrs.new_acc1[..nact],
-            },
-            &mut new_acc_lo,
-        );
-        kernel.compute_mutual(
-            SrcSlice {
-                eps: &psys.attrs.eps[..nact],
-                mass: &psys.attrs.mass[..nact],
-                rdot0: &psys.attrs.new_pos[..nact],
-                rdot1: &psys.attrs.new_vel[..nact],
-                rdot2: &psys.attrs.new_acc0[..nact],
-                rdot3: &psys.attrs.new_acc1[..nact],
-            },
-            SrcSlice {
-                eps: &psys.attrs.eps[nact..],
-                mass: &psys.attrs.mass[nact..],
-                rdot0: &psys.attrs.new_pos[nact..],
-                rdot1: &psys.attrs.new_vel[nact..],
-                rdot2: &psys.attrs.new_acc0[nact..],
-                rdot3: &psys.attrs.new_acc1[nact..],
-            },
-            &mut new_acc_lo,
-            &mut new_acc_hi,
-        );
+        kernel.compute(&src_lo, &mut dst_lo);
+        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+
         psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc_lo.0);
         psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc_lo.1);
         psys.attrs.new_acc2[..nact].copy_from_slice(&new_acc_lo.2);
@@ -723,6 +717,7 @@ impl Hermite for Hermite8 {
             }
         }
     }
+
     fn commit(&self, nact: usize, psys: &mut ParticleSystem) {
         for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, acc4, acc5, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2, &new_acc3) in soa_zip!(
             &mut psys.attrs,
