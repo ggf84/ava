@@ -24,13 +24,13 @@ where
     loop1(ni, |i| loop1(nj, |j| loop1(nk, |k| f(i, j, k))));
 }
 
-trait SplitAt<'a> {
+pub trait SplitAt<'a> {
     type Output;
     fn len(&self) -> usize;
     fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output);
 }
 
-trait SplitAtMut<'a> {
+pub trait SplitAtMut<'a> {
     type Output;
     fn len(&self) -> usize;
     fn split_at_mut(&'a mut self, mid: usize) -> (Self::Output, Self::Output);

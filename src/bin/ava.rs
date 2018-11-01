@@ -306,25 +306,16 @@ fn main() -> Result<(), std::io::Error> {
 
     use ava::sim::*;
 
-    // use ava::real::Real;
-    // let dt = eta * (2.0 as Real).powi(dtmax_pow);
-    // let tstep_scheme = TimeStepScheme::constant(dt);
-    // let tstep_scheme = TimeStepScheme::adaptive_shared();
-    let tstep_scheme = TimeStepScheme::adaptive_block();
+    // let tstep_scheme = TimeStepScheme::constant(eta, dtres_pow, dtlog_pow, dtmax_pow);
+    // let tstep_scheme = TimeStepScheme::variable(eta, dtres_pow, dtlog_pow, dtmax_pow);
+    let tstep_scheme = TimeStepScheme::individual(eta, dtres_pow, dtlog_pow, dtmax_pow);
 
-    // let integrator = Integrator::hermite4(tstep_scheme, eta, 1);
-    // let integrator = Integrator::hermite6(tstep_scheme, eta, 1);
-    let integrator = Integrator::hermite8(tstep_scheme, eta, 1);
+    // let integrator = Integrator::hermite4(1);
+    // let integrator = Integrator::hermite6(1);
+    let integrator = Integrator::hermite8(1);
 
     let mut instant = Instant::now();
-    let mut sim = Simulation::new(
-        psys,
-        integrator,
-        dtres_pow,
-        dtlog_pow,
-        dtmax_pow,
-        &mut instant,
-    );
+    let mut sim = Simulation::new(psys, integrator, tstep_scheme, &mut instant);
     sim.evolve(tend, &mut instant)?;
 
     let file = File::open("res.sim")?;
