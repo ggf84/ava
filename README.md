@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/crates/l/ava.svg)](https://github.com/ggf84/ava#license)
 [![Lines of Code](https://tokei.rs/b1/github/ggf84/ava?category=code)](https://github.com/ggf84/ava)
 [![Code size in bytes](https://img.shields.io/github/languages/code-size/ggf84/ava.svg)](https://github.com/ggf84/ava)
+[![dependency status](https://deps.rs/repo/github/ggf84/ava/status.svg)](https://deps.rs/repo/github/ggf84/ava)
 
 A Rust toolkit for gravitational N-body simulations.
 
