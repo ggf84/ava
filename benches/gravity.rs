@@ -5,8 +5,8 @@ mod bench {
     use ava::{
         gravity::Compute,
         ics::{imf::EqualMass, sdp::Plummer, Model},
-        real::Real,
         sys::ParticleSystem,
+        types::{AsSlice, AsSliceMut, Real},
     };
     use rand::{SeedableRng, StdRng};
     use std::mem::size_of;
@@ -37,7 +37,7 @@ mod bench {
             let mut acc = Derivs0::zeros(psys.len());
             let kernel = AccDot0Kernel {};
 
-            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
+            b.iter(|| kernel.compute(psys.attrs.as_slice().into(), acc.as_mut_slice()));
         }
 
         #[bench]
@@ -51,10 +51,10 @@ mod bench {
 
             b.iter(|| {
                 kernel.compute_mutual(
-                    &psys1.as_slice(),
-                    &psys2.as_slice(),
-                    &mut acc1.as_mut_slice(),
-                    &mut acc2.as_mut_slice(),
+                    psys1.attrs.as_slice().into(),
+                    psys2.attrs.as_slice().into(),
+                    acc1.as_mut_slice(),
+                    acc2.as_mut_slice(),
                 )
             });
         }
@@ -71,7 +71,7 @@ mod bench {
             let mut acc = Derivs1::zeros(psys.len());
             let kernel = AccDot1Kernel {};
 
-            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
+            b.iter(|| kernel.compute(psys.attrs.as_slice().into(), acc.as_mut_slice()));
         }
 
         #[bench]
@@ -85,10 +85,10 @@ mod bench {
 
             b.iter(|| {
                 kernel.compute_mutual(
-                    &psys1.as_slice(),
-                    &psys2.as_slice(),
-                    &mut acc1.as_mut_slice(),
-                    &mut acc2.as_mut_slice(),
+                    psys1.attrs.as_slice().into(),
+                    psys2.attrs.as_slice().into(),
+                    acc1.as_mut_slice(),
+                    acc2.as_mut_slice(),
                 )
             });
         }
@@ -105,7 +105,7 @@ mod bench {
             let mut acc = Derivs2::zeros(psys.len());
             let kernel = AccDot2Kernel {};
 
-            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
+            b.iter(|| kernel.compute(psys.attrs.as_slice().into(), acc.as_mut_slice()));
         }
 
         #[bench]
@@ -119,10 +119,10 @@ mod bench {
 
             b.iter(|| {
                 kernel.compute_mutual(
-                    &psys1.as_slice(),
-                    &psys2.as_slice(),
-                    &mut acc1.as_mut_slice(),
-                    &mut acc2.as_mut_slice(),
+                    psys1.attrs.as_slice().into(),
+                    psys2.attrs.as_slice().into(),
+                    acc1.as_mut_slice(),
+                    acc2.as_mut_slice(),
                 )
             });
         }
@@ -139,7 +139,7 @@ mod bench {
             let mut acc = Derivs3::zeros(psys.len());
             let kernel = AccDot3Kernel {};
 
-            b.iter(|| kernel.compute(&psys.as_slice(), &mut acc.as_mut_slice()));
+            b.iter(|| kernel.compute(psys.attrs.as_slice().into(), acc.as_mut_slice()));
         }
 
         #[bench]
@@ -153,10 +153,10 @@ mod bench {
 
             b.iter(|| {
                 kernel.compute_mutual(
-                    &psys1.as_slice(),
-                    &psys2.as_slice(),
-                    &mut acc1.as_mut_slice(),
-                    &mut acc2.as_mut_slice(),
+                    psys1.attrs.as_slice().into(),
+                    psys2.attrs.as_slice().into(),
+                    acc1.as_mut_slice(),
+                    acc2.as_mut_slice(),
                 )
             });
         }
@@ -173,7 +173,7 @@ mod bench {
             let mut energy = Energy::zeros(psys.len());
             let kernel = EnergyKernel {};
 
-            b.iter(|| kernel.compute(&psys.as_slice(), &mut energy.as_mut_slice()));
+            b.iter(|| kernel.compute(psys.attrs.as_slice().into(), energy.as_mut_slice()));
         }
 
         #[bench]
@@ -187,10 +187,10 @@ mod bench {
 
             b.iter(|| {
                 kernel.compute_mutual(
-                    &psys1.as_slice(),
-                    &psys2.as_slice(),
-                    &mut energy1.as_mut_slice(),
-                    &mut energy2.as_mut_slice(),
+                    psys1.attrs.as_slice().into(),
+                    psys2.attrs.as_slice().into(),
+                    energy1.as_mut_slice(),
+                    energy2.as_mut_slice(),
                 )
             });
         }

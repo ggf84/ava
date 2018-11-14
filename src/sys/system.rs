@@ -1,14 +1,14 @@
+use super::attributes::AttributesVec;
 use crate::{
     gravity::{
         energy::{Energy, EnergyKernel},
         Compute,
     },
-    real::Real,
-    sys::attributes::{Attributes, AttributesVec},
+    types::{AsSlice, AsSliceMut, Len, Real},
 };
+use itertools::izip;
 use rand::{distributions::Distribution, Rng};
 use serde_derive::{Deserialize, Serialize};
-use soa_derive::{soa_zip, soa_zip_impl};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParticleSystem {
@@ -20,22 +20,11 @@ impl ParticleSystem {
     pub fn new() -> Self {
         Default::default()
     }
-
-    pub fn len(&self) -> usize {
-        self.attrs.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.attrs.is_empty()
-    }
 }
 
-impl ParticleSystem {
-    pub fn as_slice<'a, T>(&'a self) -> T
-    where
-        T: From<&'a Self>,
-    {
-        T::from(self)
+impl Len for ParticleSystem {
+    fn len(&self) -> usize {
+        self.attrs.len()
     }
 }
 
@@ -45,17 +34,26 @@ impl ParticleSystem {
         Model: Distribution<(Real, [Real; 3], [Real; 3])>,
         R: Rng,
     {
-        let mut attrs = AttributesVec::with_capacity(npart);
+        let mut attrs = AttributesVec::default();
+        attrs._len = npart;
+        attrs.id = Vec::with_capacity(npart);
+        attrs.mass = Vec::with_capacity(npart);
+        attrs.pos = Vec::with_capacity(npart);
+        attrs.vel = Vec::with_capacity(npart);
+        attrs.eps = vec![Default::default(); npart];
         for (i, (m, r, v)) in model.sample_iter(rng).take(npart).enumerate() {
-            let attr = Attributes {
-                id: i as u64,
-                mass: m,
-                pos: r,
-                vel: v,
-                ..Default::default()
-            };
-            attrs.push(attr);
+            attrs.id.push(i as u64);
+            attrs.mass.push(m);
+            attrs.pos.push(r);
+            attrs.vel.push(v);
         }
+        // let mut attrs = AttributesVec::zeros(npart);
+        // for (i, (m, r, v)) in model.sample_iter(rng).take(npart).enumerate() {
+        //     attrs.id[i] = i as u64;
+        //     attrs.mass[i] = m;
+        //     attrs.pos[i] = r;
+        //     attrs.vel[i] = v;
+        // }
         ParticleSystem { time: 0.0, attrs }
     }
 
@@ -76,13 +74,13 @@ impl ParticleSystem {
         }
 
         let mut energy = Energy::zeros(self.len());
-        EnergyKernel {}.compute(&self.as_slice(), &mut energy.as_mut_slice());
+        EnergyKernel {}.compute(self.attrs.as_slice().into(), energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let ke = self.scale_to_virial(q_vir, ke, pe);
         self.scale_pos_vel((ke + pe) / -0.25);
 
         let mut energy = Energy::zeros(self.len());
-        EnergyKernel {}.compute(&self.as_slice(), &mut energy.as_mut_slice());
+        EnergyKernel {}.compute(self.attrs.as_slice().into(), energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let rvir = mtot.powi(2) / (-2.0 * pe);
         eprintln!(
@@ -117,7 +115,7 @@ impl ParticleSystem {
         let mtot = self.com_mass();
         let mut rcom = [0.0; 3];
         let mut vcom = [0.0; 3];
-        for (&m, &r, &v) in soa_zip!(&self.attrs, [mass, pos, vel]) {
+        for (&m, &r, &v) in izip!(&self.attrs.mass, &self.attrs.pos, &self.attrs.vel) {
             rcom.iter_mut()
                 .zip(&r)
                 .for_each(|(rcom, &r)| *rcom += m * r);
@@ -132,7 +130,7 @@ impl ParticleSystem {
 
     /// Moves the center-of-mass by the given position and velocity displacements.
     pub fn com_move_by(&mut self, dr: [Real; 3], dv: [Real; 3]) {
-        for (r, v) in soa_zip!(&mut self.attrs, [mut pos, mut vel]) {
+        for (r, v) in izip!(&mut self.attrs.pos, &mut self.attrs.vel) {
             r.iter_mut().zip(&dr).for_each(|(r, &dr)| *r += dr);
             v.iter_mut().zip(&dv).for_each(|(v, &dv)| *v += dv);
         }

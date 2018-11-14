@@ -24,18 +24,6 @@ where
     loop1(ni, |i| loop1(nj, |j| loop1(nk, |k| f(i, j, k))));
 }
 
-pub trait SplitAt<'a> {
-    type Output;
-    fn len(&self) -> usize;
-    fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output);
-}
-
-pub trait SplitAtMut<'a> {
-    type Output;
-    fn len(&self) -> usize;
-    fn split_at_mut(&'a mut self, mid: usize) -> (Self::Output, Self::Output);
-}
-
 trait ToSoA {
     type SoaType;
     fn to_soa(&self, ps: &mut Self::SoaType);
@@ -49,13 +37,13 @@ trait FromSoA {
 pub trait Compute<'a> {
     type Input;
     type Output;
-    fn compute(&self, src: &Self::Input, dst: &mut Self::Output);
+    fn compute(&self, src: Self::Input, dst: Self::Output);
     fn compute_mutual(
         &self,
-        isrc: &Self::Input,
-        jsrc: &Self::Input,
-        idst: &mut Self::Output,
-        jdst: &mut Self::Output,
+        isrc: Self::Input,
+        jsrc: Self::Input,
+        idst: Self::Output,
+        jdst: Self::Output,
     );
 }
 
@@ -87,7 +75,7 @@ macro_rules! impl_kernel {
             }
 
             /// Parallel triangle kernel
-            fn triangle(&self, src: &$scr_type, dst: &mut $dst_type) {
+            fn triangle(&self, src: $scr_type, mut dst: $dst_type) {
                 let len = src.len();
                 if len > 1 {
                     let mid = len / 2;
@@ -96,21 +84,26 @@ macro_rules! impl_kernel {
                     let (mut dst_lo, mut dst_hi) = dst.split_at_mut(mid);
 
                     rayon::join(
-                        || self.triangle(&src_lo, &mut dst_lo),
-                        || self.triangle(&src_hi, &mut dst_hi),
+                        || self.triangle(src_lo.as_slice(), dst_lo.as_mut_slice()),
+                        || self.triangle(src_hi.as_slice(), dst_hi.as_mut_slice()),
                     );
 
-                    self.rectangle(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+                    self.rectangle(
+                        src_lo.as_slice(),
+                        src_hi.as_slice(),
+                        dst_lo.as_mut_slice(),
+                        dst_hi.as_mut_slice(),
+                    );
                 }
             }
 
             /// Parallel rectangle kernel
             fn rectangle(
                 &self,
-                isrc: &$scr_type,
-                jsrc: &$scr_type,
-                idst: &mut $dst_type,
-                jdst: &mut $dst_type,
+                isrc: $scr_type,
+                jsrc: $scr_type,
+                mut idst: $dst_type,
+                mut jdst: $dst_type,
             ) {
                 let ilen = isrc.len();
                 let jlen = jsrc.len();
@@ -125,15 +118,43 @@ macro_rules! impl_kernel {
                     let (mut jdst_lo, mut jdst_hi) = jdst.split_at_mut(jmid);
 
                     rayon::join(
-                        || self.rectangle(&isrc_lo, &jsrc_hi, &mut idst_lo, &mut jdst_hi),
-                        || self.rectangle(&isrc_hi, &jsrc_lo, &mut idst_hi, &mut jdst_lo),
+                        || {
+                            self.rectangle(
+                                isrc_lo.as_slice(),
+                                jsrc_hi.as_slice(),
+                                idst_lo.as_mut_slice(),
+                                jdst_hi.as_mut_slice(),
+                            )
+                        },
+                        || {
+                            self.rectangle(
+                                isrc_hi.as_slice(),
+                                jsrc_lo.as_slice(),
+                                idst_hi.as_mut_slice(),
+                                jdst_lo.as_mut_slice(),
+                            )
+                        },
                     );
                     rayon::join(
-                        || self.rectangle(&isrc_lo, &jsrc_lo, &mut idst_lo, &mut jdst_lo),
-                        || self.rectangle(&isrc_hi, &jsrc_hi, &mut idst_hi, &mut jdst_hi),
+                        || {
+                            self.rectangle(
+                                isrc_lo.as_slice(),
+                                jsrc_lo.as_slice(),
+                                idst_lo.as_mut_slice(),
+                                jdst_lo.as_mut_slice(),
+                            )
+                        },
+                        || {
+                            self.rectangle(
+                                isrc_hi.as_slice(),
+                                jsrc_hi.as_slice(),
+                                idst_hi.as_mut_slice(),
+                                jdst_hi.as_mut_slice(),
+                            )
+                        },
                     );
                 } else if ilen > 0 && jlen > 0 {
-                    self.kernel(isrc, jsrc, idst, jdst);
+                    self.kernel(&isrc, &jsrc, &mut idst, &mut jdst);
                 }
             }
         }

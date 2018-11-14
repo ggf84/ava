@@ -1,4 +1,4 @@
-use crate::real::{consts, Real};
+use crate::types::{consts, Real};
 use rand::{
     distributions::{Distribution, Normal, Uniform},
     Rng,

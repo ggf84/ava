@@ -1,24 +1,23 @@
 use super::{to_power_of_two, Counter, Evolver, TimeStepScheme};
 use crate::{
     gravity::{
-        acc0::{AccDot0Kernel, Derivs0, Derivs0Slice},
-        acc1::{AccDot1Kernel, Derivs1, Derivs1Slice},
-        acc2::{AccDot2Kernel, Derivs2, Derivs2Slice},
-        acc3::{AccDot3Kernel, Derivs3, Derivs3Slice},
-        Compute, SplitAt, SplitAtMut,
+        acc0::{AccDot0Kernel, Derivs0},
+        acc1::{AccDot1Kernel, Derivs1, InpuData1Slice},
+        acc2::{AccDot2Kernel, Derivs2, InpuData2Slice},
+        acc3::{AccDot3Kernel, Derivs3, InpuData3Slice},
+        Compute,
     },
-    real::Real,
     sys::ParticleSystem,
+    types::{AsSlice, AsSliceMut, Len, Real},
 };
-
+use itertools::izip;
 use serde_derive::{Deserialize, Serialize};
-use soa_derive::{soa_zip, soa_zip_impl};
 
 fn count_nact(dt: Real, psys: &ParticleSystem) -> usize {
     // note: we assume psys has been sorted by dt.
     let mut nact = 0;
     let tnew = psys.time + dt;
-    for (tnow, dt) in soa_zip!(&psys.attrs, [tnow, dt]) {
+    for (tnow, dt) in izip!(&psys.attrs.tnow, &psys.attrs.dt) {
         if (tnow + dt) > tnew {
             break;
         } else {
@@ -31,7 +30,7 @@ fn count_nact(dt: Real, psys: &ParticleSystem) -> usize {
 pub(super) trait Hermite {
     const ORDER: u8;
     fn npec(&self) -> u8;
-    fn init_acc_dt(&self, nact: usize, psys: &mut ParticleSystem, eta: Real);
+    fn init_attributes(&self, nact: usize, psys: &mut ParticleSystem, eta: Real);
     fn predict(&self, nact: usize, psys: &mut ParticleSystem, dt: Real);
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem);
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, eta: Real);
@@ -60,8 +59,8 @@ impl<T: Hermite> Evolver for T {
     fn init(&self, tstep_scheme: &TimeStepScheme, psys: &mut ParticleSystem) {
         let nact = psys.len();
 
-        // init forces and time-steps
-        self.init_acc_dt(nact, psys, tstep_scheme.eta);
+        // init forces, time-steps and auxiliary attributes
+        self.init_attributes(nact, psys, tstep_scheme.eta);
 
         // set time-step limits and sort
         self.set_dtmax_and_sort_by_dt(nact, psys, tstep_scheme.dtmax);
@@ -103,23 +102,35 @@ impl Hermite for Hermite4 {
         self.npec
     }
 
-    fn init_acc_dt(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
+    fn init_attributes(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
         let mut acc = Derivs0::zeros(nact);
-        AccDot0Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
+        AccDot0Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
 
-        // If all velocities are initially zero, then acc1 == 0. This means that
-        // in order to have a robust value for dt we need to compute acc2 too.
+        // If all velocities are initially zero, then acc.dot1 == 0. This means that
+        // in order to have a robust value for dt we also need to compute acc.dot2.
         let mut acc = Derivs2::zeros(nact);
-        AccDot2Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
-        psys.attrs.acc1 = acc.1;
-        psys.attrs.acc2 = acc.2;
+        AccDot2Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
+        psys.attrs.acc1 = acc.dot1;
+        // psys.attrs.acc2 = acc.dot2;  // acc.dot2 is only used below to compute dt.
 
-        let time = psys.time;
+        psys.attrs.tnow = vec![psys.time; nact];
 
-        for (dt, tnow, &acc0, &acc1, &acc2) in
-            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2]).take(nact)
+        psys.attrs.dt = vec![Default::default(); nact];
+        psys.attrs.new_tnow = vec![Default::default(); nact];
+        psys.attrs.new_pos = vec![Default::default(); nact];
+        psys.attrs.new_vel = vec![Default::default(); nact];
+        psys.attrs.new_acc0 = vec![Default::default(); nact];
+        psys.attrs.new_acc1 = vec![Default::default(); nact];
+
+        for (dt, &acc0, &acc1, &acc2) in izip!(
+            &mut psys.attrs.dt,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &acc.dot2,
+        )
+        .take(nact)
         {
             let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -130,16 +141,21 @@ impl Hermite for Hermite4 {
 
             let dtr = 0.125 * eta * (u / l).sqrt();
             *dt = to_power_of_two(dtr);
-            *tnow = time;
         }
     }
 
     fn predict(&self, nact: usize, psys: &mut ParticleSystem, dt: Real) {
         psys.time += dt;
 
-        for (&tnow, &pos, &vel, &acc0, &acc1, new_tnow, new_pos, new_vel) in soa_zip!(
-            &mut psys.attrs,
-            [tnow, pos, vel, acc0, acc1, mut new_tnow, mut new_pos, mut new_vel]
+        for (&tnow, &pos, &vel, &acc0, &acc1, new_tnow, new_pos, new_vel) in izip!(
+            &psys.attrs.tnow,
+            &psys.attrs.pos,
+            &psys.attrs.vel,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &mut psys.attrs.new_tnow,
+            &mut psys.attrs.new_pos,
+            &mut psys.attrs.new_vel,
         )
         .take(nact)
         {
@@ -163,27 +179,40 @@ impl Hermite for Hermite4 {
     }
 
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        let src = <AccDot1Kernel as Compute>::Input::new(
-            &psys.attrs.eps,
-            &psys.attrs.mass,
-            Derivs1Slice(&psys.attrs.new_pos, &psys.attrs.new_vel),
-        );
+        let src = InpuData1Slice {
+            _len: psys.attrs.len(),
+            eps: &psys.attrs.eps,
+            mass: &psys.attrs.mass,
+            rdot0: &psys.attrs.new_pos,
+            rdot1: &psys.attrs.new_vel,
+        };
         let (src_lo, src_hi) = src.split_at(nact);
 
         let mut new_acc = Derivs1::zeros(psys.len());
-        let mut dst = new_acc.as_mut_slice();
-        let (mut dst_lo, mut dst_hi) = dst.split_at_mut(nact);
+        let (mut dst_lo, mut dst_hi) = new_acc.split_at_mut(nact);
 
         let kernel = AccDot1Kernel {};
-        kernel.compute(&src_lo, &mut dst_lo);
-        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+        kernel.compute(src_lo.as_slice(), dst_lo.as_mut_slice());
+        kernel.compute_mutual(
+            src_lo.as_slice(),
+            src_hi.as_slice(),
+            dst_lo.as_mut_slice(),
+            dst_hi.as_mut_slice(),
+        );
 
-        psys.attrs.new_acc0[..nact].copy_from_slice(&dst.0[..nact]);
-        psys.attrs.new_acc1[..nact].copy_from_slice(&dst.1[..nact]);
+        psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc.dot0[..nact]);
+        psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc.dot1[..nact]);
 
-        for (&dt, &pos, &vel, &acc0, &acc1, new_pos, new_vel, new_acc0, new_acc1) in soa_zip!(
-            &mut psys.attrs,
-            [dt, pos, vel, acc0, acc1, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1]
+        for (&dt, &pos, &vel, &acc0, &acc1, new_pos, new_vel, new_acc0, new_acc1) in izip!(
+            &psys.attrs.dt,
+            &psys.attrs.pos,
+            &psys.attrs.vel,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &mut psys.attrs.new_pos,
+            &mut psys.attrs.new_vel,
+            &mut psys.attrs.new_acc0,
+            &mut psys.attrs.new_acc1,
         )
         .take(nact)
         {
@@ -208,11 +237,21 @@ impl Hermite for Hermite4 {
     }
 
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
-        for (dt, tnow, pos, vel, acc0, acc1, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1) in soa_zip!(
-            &mut psys.attrs,
-            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, new_tnow, new_pos, new_vel, new_acc0, new_acc1]
-        )
-        .take(nact)
+        for (dt, tnow, pos, vel, acc0, acc1, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1) in
+            izip!(
+                &mut psys.attrs.dt,
+                &mut psys.attrs.tnow,
+                &mut psys.attrs.pos,
+                &mut psys.attrs.vel,
+                &mut psys.attrs.acc0,
+                &mut psys.attrs.acc1,
+                &psys.attrs.new_tnow,
+                &psys.attrs.new_pos,
+                &psys.attrs.new_vel,
+                &psys.attrs.new_acc0,
+                &psys.attrs.new_acc1,
+            )
+            .take(nact)
         {
             let h = *dt * 0.5;
             let hinv = 1.0 / h;
@@ -282,21 +321,36 @@ impl Hermite for Hermite6 {
         self.npec
     }
 
-    fn init_acc_dt(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
+    fn init_attributes(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
         let mut acc = Derivs0::zeros(nact);
-        AccDot0Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
+        AccDot0Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
 
         let mut acc = Derivs2::zeros(nact);
-        AccDot2Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
-        psys.attrs.acc1 = acc.1;
-        psys.attrs.acc2 = acc.2;
+        AccDot2Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
+        psys.attrs.acc1 = acc.dot1;
+        psys.attrs.acc2 = acc.dot2;
 
-        let time = psys.time;
+        psys.attrs.tnow = vec![psys.time; nact];
 
-        for (dt, tnow, &acc0, &acc1, &acc2) in
-            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2]).take(nact)
+        psys.attrs.dt = vec![Default::default(); nact];
+        psys.attrs.acc3 = vec![Default::default(); nact];
+        psys.attrs.new_tnow = vec![Default::default(); nact];
+        psys.attrs.new_pos = vec![Default::default(); nact];
+        psys.attrs.new_vel = vec![Default::default(); nact];
+        psys.attrs.new_acc0 = vec![Default::default(); nact];
+        psys.attrs.new_acc1 = vec![Default::default(); nact];
+        psys.attrs.new_acc2 = vec![Default::default(); nact];
+        psys.attrs.new_acc3 = vec![Default::default(); nact];
+
+        for (dt, &acc0, &acc1, &acc2) in izip!(
+            &mut psys.attrs.dt,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &psys.attrs.acc2,
+        )
+        .take(nact)
         {
             let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -308,17 +362,28 @@ impl Hermite for Hermite6 {
 
             let dtr = 0.125 * eta * (u / l).sqrt();
             *dt = to_power_of_two(dtr);
-            *tnow = time;
         }
     }
 
     fn predict(&self, nact: usize, psys: &mut ParticleSystem, dt: Real) {
         psys.time += dt;
 
-        for (&tnow, &pos, &vel, &acc0, &acc1, &acc2, &acc3, new_tnow, new_pos, new_vel, new_acc0) in soa_zip!(
-            &mut psys.attrs,
-            [tnow, pos, vel, acc0, acc1, acc2, acc3, mut new_tnow, mut new_pos, mut new_vel, mut new_acc0]
-        ).take(nact) {
+        for (&tnow, &pos, &vel, &acc0, &acc1, &acc2, &acc3, new_tnow, new_pos, new_vel, new_acc0) in
+            izip!(
+                &psys.attrs.tnow,
+                &psys.attrs.pos,
+                &psys.attrs.vel,
+                &psys.attrs.acc0,
+                &psys.attrs.acc1,
+                &psys.attrs.acc2,
+                &psys.attrs.acc3,
+                &mut psys.attrs.new_tnow,
+                &mut psys.attrs.new_pos,
+                &mut psys.attrs.new_vel,
+                &mut psys.attrs.new_acc0,
+            )
+            .take(nact)
+        {
             let dt = psys.time - tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
@@ -350,32 +415,56 @@ impl Hermite for Hermite6 {
     }
 
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        let src = <AccDot2Kernel as Compute>::Input::new(
-            &psys.attrs.eps,
-            &psys.attrs.mass,
-            Derivs2Slice(
-                &psys.attrs.new_pos,
-                &psys.attrs.new_vel,
-                &psys.attrs.new_acc0,
-            ),
-        );
+        let src = InpuData2Slice {
+            _len: psys.attrs.len(),
+            eps: &psys.attrs.eps,
+            mass: &psys.attrs.mass,
+            rdot0: &psys.attrs.new_pos,
+            rdot1: &psys.attrs.new_vel,
+            rdot2: &psys.attrs.new_acc0,
+        };
         let (src_lo, src_hi) = src.split_at(nact);
 
         let mut new_acc = Derivs2::zeros(psys.len());
-        let mut dst = new_acc.as_mut_slice();
-        let (mut dst_lo, mut dst_hi) = dst.split_at_mut(nact);
+        let (mut dst_lo, mut dst_hi) = new_acc.split_at_mut(nact);
 
         let kernel = AccDot2Kernel {};
-        kernel.compute(&src_lo, &mut dst_lo);
-        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+        kernel.compute(src_lo.as_slice(), dst_lo.as_mut_slice());
+        kernel.compute_mutual(
+            src_lo.as_slice(),
+            src_hi.as_slice(),
+            dst_lo.as_mut_slice(),
+            dst_hi.as_mut_slice(),
+        );
 
-        psys.attrs.new_acc0[..nact].copy_from_slice(&dst.0[..nact]);
-        psys.attrs.new_acc1[..nact].copy_from_slice(&dst.1[..nact]);
-        psys.attrs.new_acc2[..nact].copy_from_slice(&dst.2[..nact]);
+        psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc.dot0[..nact]);
+        psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc.dot1[..nact]);
+        psys.attrs.new_acc2[..nact].copy_from_slice(&new_acc.dot2[..nact]);
 
-        for (&dt, &pos, &vel, &acc0, &acc1, &acc2, new_pos, new_vel, new_acc0, new_acc1, new_acc2) in soa_zip!(
-            &mut psys.attrs,
-            [dt, pos, vel, acc0, acc1, acc2, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1, mut new_acc2]
+        for (
+            &dt,
+            &pos,
+            &vel,
+            &acc0,
+            &acc1,
+            &acc2,
+            new_pos,
+            new_vel,
+            new_acc0,
+            new_acc1,
+            new_acc2,
+        ) in izip!(
+            &psys.attrs.dt,
+            &psys.attrs.pos,
+            &psys.attrs.vel,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &psys.attrs.acc2,
+            &mut psys.attrs.new_pos,
+            &mut psys.attrs.new_vel,
+            &mut psys.attrs.new_acc0,
+            &mut psys.attrs.new_acc1,
+            &mut psys.attrs.new_acc2,
         )
         .take(nact)
         {
@@ -404,9 +493,36 @@ impl Hermite for Hermite6 {
     }
 
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
-        for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2) in soa_zip!(
-            &mut psys.attrs,
-            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, mut acc2, mut acc3, new_tnow, new_pos, new_vel, new_acc0, new_acc1, new_acc2]
+        for (
+            dt,
+            tnow,
+            pos,
+            vel,
+            acc0,
+            acc1,
+            acc2,
+            acc3,
+            &new_tnow,
+            &new_pos,
+            &new_vel,
+            &new_acc0,
+            &new_acc1,
+            &new_acc2,
+        ) in izip!(
+            &mut psys.attrs.dt,
+            &mut psys.attrs.tnow,
+            &mut psys.attrs.pos,
+            &mut psys.attrs.vel,
+            &mut psys.attrs.acc0,
+            &mut psys.attrs.acc1,
+            &mut psys.attrs.acc2,
+            &mut psys.attrs.acc3,
+            &psys.attrs.new_tnow,
+            &psys.attrs.new_pos,
+            &psys.attrs.new_vel,
+            &psys.attrs.new_acc0,
+            &psys.attrs.new_acc1,
+            &psys.attrs.new_acc2,
         )
         .take(nact)
         {
@@ -507,23 +623,42 @@ impl Hermite for Hermite8 {
         self.npec
     }
 
-    fn init_acc_dt(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
+    fn init_attributes(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
         let mut acc = Derivs1::zeros(nact);
-        AccDot1Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
-        psys.attrs.acc1 = acc.1;
+        AccDot1Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
+        psys.attrs.acc1 = acc.dot1;
 
         let mut acc = Derivs3::zeros(nact);
-        AccDot3Kernel {}.compute(&psys.as_slice(), &mut acc.as_mut_slice());
-        psys.attrs.acc0 = acc.0;
-        psys.attrs.acc1 = acc.1;
-        psys.attrs.acc2 = acc.2;
-        psys.attrs.acc3 = acc.3;
+        AccDot3Kernel {}.compute(psys.attrs.as_slice().into(), acc.as_mut_slice());
+        psys.attrs.acc0 = acc.dot0;
+        psys.attrs.acc1 = acc.dot1;
+        psys.attrs.acc2 = acc.dot2;
+        psys.attrs.acc3 = acc.dot3;
 
-        let time = psys.time;
+        psys.attrs.tnow = vec![psys.time; nact];
 
-        for (dt, tnow, &acc0, &acc1, &acc2, &acc3) in
-            soa_zip!(&mut psys.attrs, [mut dt, mut tnow, acc0, acc1, acc2, acc3]).take(nact)
+        psys.attrs.dt = vec![Default::default(); nact];
+        psys.attrs.acc4 = vec![Default::default(); nact];
+        psys.attrs.acc5 = vec![Default::default(); nact];
+        psys.attrs.new_tnow = vec![Default::default(); nact];
+        psys.attrs.new_pos = vec![Default::default(); nact];
+        psys.attrs.new_vel = vec![Default::default(); nact];
+        psys.attrs.new_acc0 = vec![Default::default(); nact];
+        psys.attrs.new_acc1 = vec![Default::default(); nact];
+        psys.attrs.new_acc2 = vec![Default::default(); nact];
+        psys.attrs.new_acc3 = vec![Default::default(); nact];
+        psys.attrs.new_acc4 = vec![Default::default(); nact];
+        psys.attrs.new_acc5 = vec![Default::default(); nact];
+
+        for (dt, &acc0, &acc1, &acc2, &acc3) in izip!(
+            &mut psys.attrs.dt,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &psys.attrs.acc2,
+            &psys.attrs.acc3,
+        )
+        .take(nact)
         {
             let a0 = acc0.iter().fold(0.0, |s, v| s + v * v);
             let a1 = acc1.iter().fold(0.0, |s, v| s + v * v);
@@ -542,7 +677,6 @@ impl Hermite for Hermite8 {
 
             let dtr = 0.125 * eta * (u / l).sqrt();
             *dt = to_power_of_two(dtr);
-            *tnow = time;
         }
     }
 
@@ -564,10 +698,24 @@ impl Hermite for Hermite8 {
             new_vel,
             new_acc0,
             new_acc1,
-        ) in soa_zip!(
-            &mut psys.attrs,
-            [tnow, pos, vel, acc0, acc1, acc2, acc3, acc4, acc5, mut new_tnow, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1]
-        ).take(nact) {
+        ) in izip!(
+            &psys.attrs.tnow,
+            &psys.attrs.pos,
+            &psys.attrs.vel,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &psys.attrs.acc2,
+            &psys.attrs.acc3,
+            &psys.attrs.acc4,
+            &psys.attrs.acc5,
+            &mut psys.attrs.new_tnow,
+            &mut psys.attrs.new_pos,
+            &mut psys.attrs.new_vel,
+            &mut psys.attrs.new_acc0,
+            &mut psys.attrs.new_acc1,
+        )
+        .take(nact)
+        {
             let dt = psys.time - tnow;
             let h1 = dt;
             let h2 = dt * (1.0 / 2.0);
@@ -613,34 +761,62 @@ impl Hermite for Hermite8 {
     }
 
     fn ecorrect(&self, nact: usize, psys: &mut ParticleSystem) {
-        let src = <AccDot3Kernel as Compute>::Input::new(
-            &psys.attrs.eps,
-            &psys.attrs.mass,
-            Derivs3Slice(
-                &psys.attrs.new_pos,
-                &psys.attrs.new_vel,
-                &psys.attrs.new_acc0,
-                &psys.attrs.new_acc1,
-            ),
-        );
+        let src = InpuData3Slice {
+            _len: psys.attrs.len(),
+            eps: &psys.attrs.eps,
+            mass: &psys.attrs.mass,
+            rdot0: &psys.attrs.new_pos,
+            rdot1: &psys.attrs.new_vel,
+            rdot2: &psys.attrs.new_acc0,
+            rdot3: &psys.attrs.new_acc1,
+        };
         let (src_lo, src_hi) = src.split_at(nact);
 
         let mut new_acc = Derivs3::zeros(psys.len());
-        let mut dst = new_acc.as_mut_slice();
-        let (mut dst_lo, mut dst_hi) = dst.split_at_mut(nact);
+        let (mut dst_lo, mut dst_hi) = new_acc.split_at_mut(nact);
 
         let kernel = AccDot3Kernel {};
-        kernel.compute(&src_lo, &mut dst_lo);
-        kernel.compute_mutual(&src_lo, &src_hi, &mut dst_lo, &mut dst_hi);
+        kernel.compute(src_lo.as_slice(), dst_lo.as_mut_slice());
+        kernel.compute_mutual(
+            src_lo.as_slice(),
+            src_hi.as_slice(),
+            dst_lo.as_mut_slice(),
+            dst_hi.as_mut_slice(),
+        );
 
-        psys.attrs.new_acc0[..nact].copy_from_slice(&dst.0[..nact]);
-        psys.attrs.new_acc1[..nact].copy_from_slice(&dst.1[..nact]);
-        psys.attrs.new_acc2[..nact].copy_from_slice(&dst.2[..nact]);
-        psys.attrs.new_acc3[..nact].copy_from_slice(&dst.3[..nact]);
+        psys.attrs.new_acc0[..nact].copy_from_slice(&new_acc.dot0[..nact]);
+        psys.attrs.new_acc1[..nact].copy_from_slice(&new_acc.dot1[..nact]);
+        psys.attrs.new_acc2[..nact].copy_from_slice(&new_acc.dot2[..nact]);
+        psys.attrs.new_acc3[..nact].copy_from_slice(&new_acc.dot3[..nact]);
 
-        for (&dt, &pos, &vel, &acc0, &acc1, &acc2, &acc3, new_pos, new_vel, new_acc0, new_acc1, new_acc2, new_acc3) in soa_zip!(
-            &mut psys.attrs,
-            [dt, pos, vel, acc0, acc1, acc2, acc3, mut new_pos, mut new_vel, mut new_acc0, mut new_acc1, mut new_acc2, mut new_acc3]
+        for (
+            &dt,
+            &pos,
+            &vel,
+            &acc0,
+            &acc1,
+            &acc2,
+            &acc3,
+            new_pos,
+            new_vel,
+            new_acc0,
+            new_acc1,
+            new_acc2,
+            new_acc3,
+        ) in izip!(
+            &psys.attrs.dt,
+            &psys.attrs.pos,
+            &psys.attrs.vel,
+            &psys.attrs.acc0,
+            &psys.attrs.acc1,
+            &psys.attrs.acc2,
+            &psys.attrs.acc3,
+            &mut psys.attrs.new_pos,
+            &mut psys.attrs.new_vel,
+            &mut psys.attrs.new_acc0,
+            &mut psys.attrs.new_acc1,
+            &mut psys.attrs.new_acc2,
+            &mut psys.attrs.new_acc3,
         )
         .take(nact)
         {
@@ -673,9 +849,42 @@ impl Hermite for Hermite8 {
     }
 
     fn commit(&self, nact: usize, psys: &mut ParticleSystem, eta: Real) {
-        for (dt, tnow, pos, vel, acc0, acc1, acc2, acc3, acc4, acc5, &new_tnow, &new_pos, &new_vel, &new_acc0, &new_acc1, &new_acc2, &new_acc3) in soa_zip!(
-            &mut psys.attrs,
-            [mut dt, mut tnow, mut pos, mut vel, mut acc0, mut acc1, mut acc2, mut acc3, mut acc4, mut acc5, new_tnow, new_pos, new_vel, new_acc0, new_acc1, new_acc2, new_acc3]
+        for (
+            dt,
+            tnow,
+            pos,
+            vel,
+            acc0,
+            acc1,
+            acc2,
+            acc3,
+            acc4,
+            acc5,
+            &new_tnow,
+            &new_pos,
+            &new_vel,
+            &new_acc0,
+            &new_acc1,
+            &new_acc2,
+            &new_acc3,
+        ) in izip!(
+            &mut psys.attrs.dt,
+            &mut psys.attrs.tnow,
+            &mut psys.attrs.pos,
+            &mut psys.attrs.vel,
+            &mut psys.attrs.acc0,
+            &mut psys.attrs.acc1,
+            &mut psys.attrs.acc2,
+            &mut psys.attrs.acc3,
+            &mut psys.attrs.acc4,
+            &mut psys.attrs.acc5,
+            &psys.attrs.new_tnow,
+            &psys.attrs.new_pos,
+            &psys.attrs.new_vel,
+            &psys.attrs.new_acc0,
+            &psys.attrs.new_acc1,
+            &psys.attrs.new_acc2,
+            &psys.attrs.new_acc3,
         )
         .take(nact)
         {

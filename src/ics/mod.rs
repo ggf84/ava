@@ -1,7 +1,7 @@
 pub mod imf;
 pub mod sdp;
 
-use crate::real::Real;
+use crate::types::Real;
 use rand::{distributions::Distribution, Rng};
 
 pub struct Model<IMF, SDP> {

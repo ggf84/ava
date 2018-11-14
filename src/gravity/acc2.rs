@@ -1,5 +1,8 @@
-use super::{loop2, loop3, Compute, FromSoA, SplitAt, SplitAtMut, ToSoA};
-use crate::{real::Real, sys::ParticleSystem};
+use super::{loop2, loop3, Compute, FromSoA, ToSoA};
+use crate::{
+    sys::attributes::AttributesSlice,
+    types::{AsSlice, AsSliceMut, Len, Real},
+};
 
 const THRESHOLD: usize = 32;
 const TILE: usize = 16 / std::mem::size_of::<Real>();
@@ -10,76 +13,40 @@ struct SoaDerivs<T>([T; 3], [T; 3], [T; 3]);
 
 #[repr(align(16))]
 #[derive(Copy, Clone, Default)]
-pub struct SoaData {
+pub(super) struct SoaData {
     eps: [Real; THRESHOLD],
     mass: [Real; THRESHOLD],
     rdot: SoaDerivs<[Real; THRESHOLD]>,
     adot: SoaDerivs<[Real; THRESHOLD]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Derivs2(pub Vec<[Real; 3]>, pub Vec<[Real; 3]>, pub Vec<[Real; 3]>);
-impl Derivs2 {
-    pub fn zeros(n: usize) -> Self {
-        Derivs2(
-            vec![Default::default(); n],
-            vec![Default::default(); n],
-            vec![Default::default(); n],
-        )
+impl_struct_of_array!(
+    #[derive(Clone, Debug, PartialEq)]
+    pub Derivs2,
+    pub Derivs2Slice,
+    pub Derivs2SliceMut,
+    {
+        pub dot0: [Real; 3],
+        pub dot1: [Real; 3],
+        pub dot2: [Real; 3],
     }
-
-    pub fn as_slice(&self) -> Derivs2Slice<'_> {
-        Derivs2Slice(&self.0[..], &self.1[..], &self.2[..])
-    }
-
-    pub fn as_mut_slice(&mut self) -> Derivs2SliceMut<'_> {
-        Derivs2SliceMut(&mut self.0[..], &mut self.1[..], &mut self.2[..])
-    }
-}
-
-pub struct Derivs2Slice<'a>(
-    pub &'a [[Real; 3]],
-    pub &'a [[Real; 3]],
-    pub &'a [[Real; 3]],
 );
-impl<'a, 'b: 'a> SplitAt<'a> for Derivs2Slice<'b> {
-    type Output = Derivs2Slice<'a>;
 
-    fn len(&self) -> usize {
-        self.0.len()
+impl_struct_of_array!(
+    #[derive(Clone, Debug, PartialEq)]
+    pub InpuData2,
+    pub InpuData2Slice,
+    pub InpuData2SliceMut,
+    {
+        pub eps: Real,
+        pub mass: Real,
+        pub rdot0: [Real; 3],
+        pub rdot1: [Real; 3],
+        pub rdot2: [Real; 3],
     }
-
-    fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output) {
-        let (lo0, hi0) = self.0.split_at(mid);
-        let (lo1, hi1) = self.1.split_at(mid);
-        let (lo2, hi2) = self.2.split_at(mid);
-        (Derivs2Slice(lo0, lo1, lo2), Derivs2Slice(hi0, hi1, hi2))
-    }
-}
-
-pub struct Derivs2SliceMut<'a>(
-    pub &'a mut [[Real; 3]],
-    pub &'a mut [[Real; 3]],
-    pub &'a mut [[Real; 3]],
 );
-impl<'a, 'b: 'a> SplitAtMut<'a> for Derivs2SliceMut<'b> {
-    type Output = Derivs2SliceMut<'a>;
 
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn split_at_mut(&'a mut self, mid: usize) -> (Self::Output, Self::Output) {
-        let (lo0, hi0) = self.0.split_at_mut(mid);
-        let (lo1, hi1) = self.1.split_at_mut(mid);
-        let (lo2, hi2) = self.2.split_at_mut(mid);
-        (
-            Derivs2SliceMut(lo0, lo1, lo2),
-            Derivs2SliceMut(hi0, hi1, hi2),
-        )
-    }
-}
-impl<'a> FromSoA for Derivs2SliceMut<'a> {
+impl FromSoA for Derivs2SliceMut<'_> {
     type SoaType = SoaData;
 
     fn from_soa(&mut self, p: &Self::SoaType) {
@@ -87,50 +54,15 @@ impl<'a> FromSoA for Derivs2SliceMut<'a> {
         for j in 0..n {
             let minv = 1.0 / p.mass[j];
             for k in 0..3 {
-                self.0[j][k] += p.adot.0[k][j] * minv;
-                self.1[j][k] += p.adot.1[k][j] * minv;
-                self.2[j][k] += p.adot.2[k][j] * minv;
+                self.dot0[j][k] += p.adot.0[k][j] * minv;
+                self.dot1[j][k] += p.adot.1[k][j] * minv;
+                self.dot2[j][k] += p.adot.2[k][j] * minv;
             }
         }
     }
 }
 
-pub struct InpuData2Slice<'a> {
-    pub eps: &'a [Real],
-    pub mass: &'a [Real],
-    pub rdot: Derivs2Slice<'a>,
-}
-impl<'a> InpuData2Slice<'a> {
-    pub fn new(eps: &'a [Real], mass: &'a [Real], rdot: Derivs2Slice<'a>) -> Self {
-        InpuData2Slice { eps, mass, rdot }
-    }
-}
-impl<'a, 'b: 'a> SplitAt<'a> for InpuData2Slice<'b> {
-    type Output = InpuData2Slice<'a>;
-
-    fn len(&self) -> usize {
-        self.rdot.len()
-    }
-
-    fn split_at(&'a self, mid: usize) -> (Self::Output, Self::Output) {
-        let (eps_lo, eps_hi) = self.eps.split_at(mid);
-        let (mass_lo, mass_hi) = self.mass.split_at(mid);
-        let (rdot_lo, rdot_hi) = self.rdot.split_at(mid);
-        (
-            InpuData2Slice {
-                eps: eps_lo,
-                mass: mass_lo,
-                rdot: rdot_lo,
-            },
-            InpuData2Slice {
-                eps: eps_hi,
-                mass: mass_hi,
-                rdot: rdot_hi,
-            },
-        )
-    }
-}
-impl<'a> ToSoA for InpuData2Slice<'a> {
+impl ToSoA for InpuData2Slice<'_> {
     type SoaType = SoaData;
 
     fn to_soa(&self, p: &mut Self::SoaType) {
@@ -139,19 +71,23 @@ impl<'a> ToSoA for InpuData2Slice<'a> {
         p.mass[..n].copy_from_slice(&self.mass[..n]);
         for j in 0..n {
             for k in 0..3 {
-                p.rdot.0[k][j] = self.rdot.0[j][k];
-                p.rdot.1[k][j] = self.rdot.1[j][k];
-                p.rdot.2[k][j] = self.rdot.2[j][k];
+                p.rdot.0[k][j] = self.rdot0[j][k];
+                p.rdot.1[k][j] = self.rdot1[j][k];
+                p.rdot.2[k][j] = self.rdot2[j][k];
             }
         }
     }
 }
-impl<'a> From<&'a ParticleSystem> for InpuData2Slice<'a> {
-    fn from(ps: &'a ParticleSystem) -> Self {
+
+impl<'a, 'b: 'a> From<AttributesSlice<'b>> for InpuData2Slice<'a> {
+    fn from(attrs: AttributesSlice<'b>) -> Self {
         InpuData2Slice {
-            eps: &ps.attrs.eps[..],
-            mass: &ps.attrs.mass[..],
-            rdot: Derivs2Slice(&ps.attrs.pos[..], &ps.attrs.vel[..], &ps.attrs.acc0[..]),
+            _len: attrs.len(),
+            eps: &attrs.eps[..],
+            mass: &attrs.mass[..],
+            rdot0: &attrs.pos[..],
+            rdot1: &attrs.vel[..],
+            rdot2: &attrs.acc0[..],
         }
     }
 }
@@ -163,16 +99,16 @@ impl<'a> Compute<'a> for AccDot2Kernel {
     type Input = InpuData2Slice<'a>;
     type Output = Derivs2SliceMut<'a>;
 
-    fn compute(&self, src: &Self::Input, dst: &mut Self::Output) {
+    fn compute(&self, src: Self::Input, dst: Self::Output) {
         self.triangle(src, dst);
     }
 
     fn compute_mutual(
         &self,
-        isrc: &Self::Input,
-        jsrc: &Self::Input,
-        idst: &mut Self::Output,
-        jdst: &mut Self::Output,
+        isrc: Self::Input,
+        jsrc: Self::Input,
+        idst: Self::Output,
+        jdst: Self::Output,
     ) {
         self.rectangle(isrc, jsrc, idst, jdst);
     }

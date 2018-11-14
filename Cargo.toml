@@ -22,12 +22,12 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-bincode = "~1.0"
-rand = "~0.5"
-rayon = "~1.0"
-serde = "~1.0"
-serde_derive = "~1.0"
-soa_derive = "~0.7"
+bincode = "1.0"
+itertools = "0.7"
+rand = "0.5"
+rayon = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
 
 [features]
 default = ["f64"]

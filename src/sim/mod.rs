@@ -6,8 +6,8 @@ use crate::{
         energy::{Energy, EnergyKernel},
         Compute,
     },
-    real::Real,
     sys::ParticleSystem,
+    types::{AsSlice, AsSliceMut, Len, Real},
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{
@@ -93,10 +93,7 @@ impl TimeStepScheme {
                 psys.attrs.dt.iter_mut().for_each(|idt| *idt = dt);
                 dt
             }
-            Scheme::Individual => {
-                let dt = psys.attrs.dt[0];
-                dt
-            }
+            Scheme::Individual => psys.attrs.dt[0],
         }
     }
 }
@@ -200,7 +197,7 @@ impl Logger {
     fn new(psys: &ParticleSystem) -> Self {
         let mtot = psys.com_mass();
         let mut energy = Energy::zeros(psys.len());
-        EnergyKernel {}.compute(&psys.as_slice(), &mut energy.as_mut_slice());
+        EnergyKernel {}.compute(psys.attrs.as_slice().into(), energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let te_0 = te;
@@ -248,7 +245,7 @@ impl Logger {
         let rcom = rcom.iter().fold(0.0, |s, r| s + r * r).sqrt();
         let vcom = vcom.iter().fold(0.0, |s, v| s + v * v).sqrt();
         let mut energy = Energy::zeros(psys.len());
-        EnergyKernel {}.compute(&psys.as_slice(), &mut energy.as_mut_slice());
+        EnergyKernel {}.compute(psys.attrs.as_slice().into(), energy.as_mut_slice());
         let (ke, pe) = energy.reduce(mtot);
         let te = ke + pe;
         let ve = 2.0 * ke + pe;
