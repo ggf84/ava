@@ -59,7 +59,7 @@ impl Distribution<Real> for Maschberger2013 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{SeedableRng, StdRng};
+    use rand::{rngs::SmallRng, SeedableRng};
 
     fn use_imf<T, R: Rng>(imf: &T, rng: &mut R) -> Vec<Real>
     where
@@ -84,19 +84,19 @@ mod tests {
     fn equalmass_sample() {
         let imf = EqualMass::new(1.0);
 
-        let seed = [0; 32];
-        let mut rng = StdRng::from_seed(seed);
+        let seed = 1234567890;
+        let mut rng = SmallRng::seed_from_u64(seed);
 
         let m1: Vec<_> = imf.sample_iter(&mut rng).take(5).collect();
         let m2: Vec<_> = imf.sample_iter(&mut rng).take(3).collect();
-        let mut rng = StdRng::from_seed(seed);
+        let mut rng = SmallRng::seed_from_u64(seed);
         let mm: Vec<_> = imf.sample_iter(&mut rng).take(8).collect();
         assert_eq!(m1.len() + m2.len(), mm.len());
         assert_eq!(&m1[..], &mm[..5]);
         assert_eq!(&m2[..], &mm[5..]);
 
         let r1 = use_imf(&imf, &mut rng);
-        let mut rng = StdRng::from_seed(seed);
+        let mut rng = SmallRng::seed_from_u64(seed);
         let r2 = use_imf(&imf, &mut rng);
         assert_eq!(r1, r2);
         assert_eq!(r2, mm.iter().map(|m| 2.0 * m).collect::<Vec<_>>());
@@ -111,19 +111,19 @@ mod tests {
     fn maschberger2013_sample() {
         let imf = Maschberger2013::new(0.01, 150.0);
 
-        let seed = [0; 32];
-        let mut rng = StdRng::from_seed(seed);
+        let seed = 1234567890;
+        let mut rng = SmallRng::seed_from_u64(seed);
 
         let m1: Vec<_> = imf.sample_iter(&mut rng).take(5).collect();
         let m2: Vec<_> = imf.sample_iter(&mut rng).take(3).collect();
-        let mut rng = StdRng::from_seed(seed);
+        let mut rng = SmallRng::seed_from_u64(seed);
         let mm: Vec<_> = imf.sample_iter(&mut rng).take(8).collect();
         assert_eq!(m1.len() + m2.len(), mm.len());
         assert_eq!(&m1[..], &mm[..5]);
         assert_eq!(&m2[..], &mm[5..]);
 
         let r1 = use_imf(&imf, &mut rng);
-        let mut rng = StdRng::from_seed(seed);
+        let mut rng = SmallRng::seed_from_u64(seed);
         let r2 = use_imf(&imf, &mut rng);
         assert_ne!(r1, r2);
         assert_eq!(r2, mm.iter().map(|m| 2.0 * m).collect::<Vec<_>>());

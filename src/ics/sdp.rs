@@ -1,6 +1,6 @@
 use crate::types::{consts, Real};
 use rand::{
-    distributions::{Distribution, Normal, Uniform},
+    distributions::{Distribution, StandardNormal, Uniform, UnitSphereSurface},
     Rng,
 };
 
@@ -17,7 +17,9 @@ trait SDP {
 
 /// Plummer's density profile.
 pub struct Plummer {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Plummer {
     const R_SCALE_FACTOR: Real = (3.0 * consts::PI) / 16.0;
@@ -38,7 +40,9 @@ impl SDP for Plummer {
 
 /// Dehnen's (gamma = 0) density profile.
 pub struct Dehnen0 {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Dehnen0 {
     const R_SCALE_FACTOR: Real = 1.0 / 5.0;
@@ -60,7 +64,9 @@ impl SDP for Dehnen0 {
 
 /// Dehnen's (gamma = 1/2) density profile.
 pub struct Dehnen12 {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Dehnen12 {
     const R_SCALE_FACTOR: Real = 1.0 / 4.0;
@@ -82,7 +88,9 @@ impl SDP for Dehnen12 {
 
 /// Dehnen's (gamma = 1) density profile (a.k.a. Hernquist model).
 pub struct Dehnen1 {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Dehnen1 {
     const R_SCALE_FACTOR: Real = 1.0 / 3.0;
@@ -124,7 +132,9 @@ impl SDP for Dehnen1 {
 
 /// Dehnen's (gamma = 3/2) density profile.
 pub struct Dehnen32 {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Dehnen32 {
     const R_SCALE_FACTOR: Real = 1.0 / 2.0;
@@ -166,7 +176,9 @@ impl SDP for Dehnen32 {
 
 /// Dehnen's (gamma = 2) density profile (a.k.a. Jaffe model).
 pub struct Dehnen2 {
-    m_uniform: Uniform<Real>,
+    uniform: Uniform<Real>,
+    std_normal: StandardNormal,
+    unit_sphere: UnitSphereSurface,
 }
 impl SDP for Dehnen2 {
     const R_SCALE_FACTOR: Real = 1.0;
@@ -218,7 +230,9 @@ macro_rules! impl_distribution {
                 pub fn new() -> Self {
                     let mfrac = Self::mass_r(25.0 / Self::R_SCALE_FACTOR);
                     $name {
-                        m_uniform: Uniform::new(0.0, mfrac),
+                        uniform: Uniform::new(0.0, mfrac),
+                        std_normal: StandardNormal,
+                        unit_sphere: UnitSphereSurface::new(),
                     }
                 }
             }
@@ -229,15 +243,26 @@ macro_rules! impl_distribution {
             }
             impl Distribution<([Real; 3], [Real; 3])> for $name {
                 fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ([Real; 3], [Real; 3]) {
-                    let m = self.m_uniform.sample(rng);
-                    let r = Self::radius_m(m);
-                    let [rx, ry, rz] = to_xyz(r * Self::R_SCALE_FACTOR, rng);
+                    let mcum = self.uniform.sample(rng);
 
-                    let sigma2_1d = Self::sigma2_1d(r);
-                    let v_normal = Normal::new(0.0, f64::from((sigma2_1d * Self::V2_SCALE_FACTOR).sqrt()));
-                    let vx = v_normal.sample(rng) as Real;
-                    let vy = v_normal.sample(rng) as Real;
-                    let vz = v_normal.sample(rng) as Real;
+                    let radius = Self::radius_m(mcum);
+                    let sigma2_1d = Self::sigma2_1d(radius);
+
+                    let r = radius * Self::R_SCALE_FACTOR;
+                    let [x, y, z] = self.unit_sphere.sample(rng);
+                    let rx = r * x as Real;
+                    let ry = r * y as Real;
+                    let rz = r * z as Real;
+
+                    let std_dev = (sigma2_1d * Self::V2_SCALE_FACTOR).sqrt();
+                    let [x, y, z] = [
+                        self.std_normal.sample(rng),
+                        self.std_normal.sample(rng),
+                        self.std_normal.sample(rng),
+                    ];
+                    let vx = std_dev * x as Real;
+                    let vy = std_dev * y as Real;
+                    let vz = std_dev * z as Real;
 
                     ([rx, ry, rz], [vx, vy, vz])
                 }
@@ -246,13 +271,5 @@ macro_rules! impl_distribution {
     }
 }
 impl_distribution!(Plummer, Dehnen0, Dehnen12, Dehnen1, Dehnen32, Dehnen2);
-
-fn to_xyz<R: Rng + ?Sized>(val: Real, rng: &mut R) -> [Real; 3] {
-    let theta = rng.gen_range::<Real>(-1.0, 1.0).acos();
-    let phi = rng.gen_range::<Real>(0.0, 2.0 * consts::PI);
-    let (st, ct) = theta.sin_cos();
-    let (sp, cp) = phi.sin_cos();
-    [val * st * cp, val * st * sp, val * ct]
-}
 
 // -- end of file --

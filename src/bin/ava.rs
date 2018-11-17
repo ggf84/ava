@@ -16,7 +16,7 @@ use ava::{
     types::{AsSlice, AsSliceMut, Len},
 };
 use itertools::izip;
-use rand::{SeedableRng, StdRng};
+use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     fs::File,
     io::{BufReader, BufWriter, Write},
@@ -24,8 +24,7 @@ use std::{
 };
 
 fn main() -> Result<(), std::io::Error> {
-    let seed = [0; 32];
-    let mut rng = StdRng::from_seed(seed);
+    let mut rng = SmallRng::seed_from_u64(1234567890);
 
     let npart = 256;
     let imf = EqualMass::new(1.0);
@@ -293,8 +292,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // --------------------
 
-    let seed = [0; 32];
-    let mut rng = StdRng::from_seed(seed);
+    let mut rng = SmallRng::seed_from_u64(1234567890);
 
     let npart = 256;
     // let imf = EqualMass::new(1.0);

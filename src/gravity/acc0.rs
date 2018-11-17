@@ -157,7 +157,8 @@ mod bench {
     use super::*;
     use rand::{
         distributions::{Distribution, Standard},
-        Rng, SeedableRng, StdRng,
+        rngs::SmallRng,
+        Rng, SeedableRng,
     };
     use test::Bencher;
 
@@ -177,7 +178,7 @@ mod bench {
     #[bench]
     fn p2p(b: &mut Bencher) {
         let kernel = AccDot0Kernel {};
-        let mut rng = StdRng::from_seed([0; 32]);
+        let mut rng = SmallRng::seed_from_u64(1234567890);
         b.iter(|| {
             let mut ips: [SoaData; NTILES] = [Default::default(); NTILES];
             let mut jps: [SoaData; NTILES] = [Default::default(); NTILES];

@@ -8,7 +8,7 @@ mod bench {
         sys::ParticleSystem,
         types::{AsSlice, AsSliceMut, Real},
     };
-    use rand::{SeedableRng, StdRng};
+    use rand::{rngs::SmallRng, SeedableRng};
     use std::mem::size_of;
     use test::Bencher;
 
@@ -16,8 +16,8 @@ mod bench {
     const NTILES: usize = 256 / TILE;
     const N: usize = NTILES * TILE;
 
-    fn init_particle_system(npart: usize, seed: u8) -> ParticleSystem {
-        let mut rng = StdRng::from_seed([seed; 32]);
+    fn init_particle_system(npart: usize, seed: u64) -> ParticleSystem {
+        let mut rng = SmallRng::seed_from_u64(seed);
 
         let imf = EqualMass::new(1.0);
         let sdp = Plummer::new();
