@@ -1,16 +1,18 @@
-use super::attributes::AttributesVec;
 use crate::{
     gravity::{
         energy::{Energy, EnergyKernel},
         Compute,
     },
+    sys::AttributesVec,
     types::{AsSlice, AsSliceMut, Len, Real},
 };
 use itertools::izip;
 use rand::{distributions::Distribution, Rng};
-use serde_derive::{Deserialize, Serialize};
+#[cfg(feature = "serde1")]
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct ParticleSystem {
     pub time: Real,
     pub attrs: AttributesVec,

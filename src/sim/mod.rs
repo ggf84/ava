@@ -9,10 +9,9 @@ use crate::{
     sys::ParticleSystem,
     types::{AsSlice, AsSliceMut, Len, Real},
 };
-use serde_derive::{Deserialize, Serialize};
+#[cfg(feature = "serde1")]
+use serde::{Deserialize, Serialize};
 use std::{
-    fs::File,
-    io::BufWriter,
     ops::AddAssign,
     time::{Duration, Instant},
 };
@@ -27,7 +26,8 @@ trait Evolver {
     fn evolve(&self, tstep_scheme: &TimeStepScheme, psys: &mut ParticleSystem) -> Counter;
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 struct Counter {
     steps: u16,
     bsteps: u32,
@@ -41,14 +41,16 @@ impl AddAssign for Counter {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 enum Scheme {
     Constant,
     Variable,
     Individual,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct TimeStepScheme {
     eta: Real,
     dtres: Real,
@@ -98,7 +100,8 @@ impl TimeStepScheme {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub enum Integrator {
     H4(Hermite4),
     H6(Hermite6),
@@ -135,7 +138,8 @@ impl Evolver for Integrator {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Simulation {
     psys: ParticleSystem,
     integrator: Integrator,
@@ -170,21 +174,24 @@ impl Simulation {
                 self.logger.print_log(&self.psys, instant);
             }
             if self.psys.time % self.tstep_scheme.dtres == 0.0 {
+                #[cfg(feature = "serde1")]
                 self.write_restart_file()?;
             }
         }
         Ok(())
     }
 
+    #[cfg(feature = "serde1")]
     fn write_restart_file(&self) -> Result<(), std::io::Error> {
-        let file = File::create("res.sim")?;
-        let mut writer = BufWriter::new(file);
+        let file = std::fs::File::create("res.sim")?;
+        let mut writer = std::io::BufWriter::new(file);
         bincode::serialize_into(&mut writer, &self).unwrap();
         Ok(())
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 struct Logger {
     te_0: Real,
     te_n: Real,

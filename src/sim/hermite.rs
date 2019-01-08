@@ -11,7 +11,8 @@ use crate::{
     types::{AsSlice, AsSliceMut, Len, Real},
 };
 use itertools::izip;
-use serde_derive::{Deserialize, Serialize};
+#[cfg(feature = "serde1")]
+use serde::{Deserialize, Serialize};
 
 fn count_nact(dt: Real, psys: &ParticleSystem) -> usize {
     // note: we assume psys has been sorted by dt.
@@ -86,7 +87,8 @@ impl<T: Hermite> Evolver for T {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Hermite4 {
     npec: u8,
 }
@@ -305,7 +307,8 @@ impl Hermite for Hermite4 {
 
 // --------------------
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Hermite6 {
     npec: u8,
 }
@@ -607,7 +610,8 @@ impl Hermite for Hermite6 {
 
 // --------------------
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Hermite8 {
     npec: u8,
 }

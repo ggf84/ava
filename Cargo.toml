@@ -2,18 +2,22 @@
 name = "ava"
 version = "0.0.3"
 authors = ["Guilherme G. Ferrari <gg.ferrari@gmail.com>"]
-description = "A Rust toolkit for gravitational N-body simulations"
-#homepage = "https://github.com/ggf84/ava"
-repository = "https://github.com/ggf84/ava"
-documentation = "https://docs.rs/ava"
-readme = "README.md"
-license = "MIT"
-categories = ["science"]
 edition = "2018"
+description = "A Rust toolkit for gravitational N-body simulations"
+documentation = "https://docs.rs/ava"
+repository = "https://github.com/ggf84/ava"
+license = "MIT"
+readme = "README.md"
+categories = ["algorithms", "science", "simulation"]
+keywords = ["nbody", "gravity", "astronomy", "mathematics", "physics"]
 
-[profile.bench]
-opt-level = 3
-lto = true
+[badges]
+maintenance = { status = "experimental" }
+
+[profile.dev]
+codegen-units = 1
+
+[profile.test]
 codegen-units = 1
 
 [profile.release]
@@ -21,16 +25,30 @@ opt-level = 3
 lto = true
 codegen-units = 1
 
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+
 [dependencies]
-bincode = "1.0"
 itertools = "0.8"
 rand = "0.6"
 rayon = "1.0"
-serde = "1.0"
-serde_derive = "1.0"
+
+bincode = {version = "1.0", optional = true}
+serde = {version = "1.0", optional = true, features=["derive"]}
 
 [features]
 default = ["f64"]
-f32 = []    # enable single precision
-f64 = []    # enable double precision
+
+# enable single precision mode
+f32 = []
+
+# enable double precision mode
+f64 = []
+
+# enable support for (de-)serialization
+serde1 = ["serde", "bincode"]
+
+# enable support for unstable features
 nightly = []

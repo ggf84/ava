@@ -1,8 +1,10 @@
 use crate::types::{AsSlice, AsSliceMut, Len, Real};
-use serde_derive::{Deserialize, Serialize};
+#[cfg(feature = "serde1")]
+use serde::{Deserialize, Serialize};
 
 impl_struct_of_array!(
-    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq)]
+    #[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
     pub AttributesVec,
     pub AttributesSlice,
     pub AttributesSliceMut,

@@ -17,11 +17,7 @@ use ava::{
 };
 use itertools::izip;
 use rand::{rngs::SmallRng, SeedableRng};
-use std::{
-    fs::File,
-    io::{BufReader, BufWriter, Write},
-    time::Instant,
-};
+use std::time::Instant;
 
 fn main() -> Result<(), std::io::Error> {
     let mut rng = SmallRng::seed_from_u64(1234567890);
@@ -36,8 +32,9 @@ fn main() -> Result<(), std::io::Error> {
     let mut psys =
         ParticleSystem::from_model(4 * npart, &model, &mut rng).into_standard_units(0.5, None);
 
-    let file = File::create("cluster.txt")?;
-    let mut writer = BufWriter::new(file);
+    use std::io::Write;
+    let file = std::fs::File::create("cluster.txt")?;
+    let mut writer = std::io::BufWriter::new(file);
     for (&id, &eps, &mass, &pos, &vel) in izip!(
         &psys.attrs.id,
         &psys.attrs.eps,
@@ -325,13 +322,16 @@ fn main() -> Result<(), std::io::Error> {
     let mut sim = Simulation::new(psys, integrator, tstep_scheme, &mut instant);
     sim.evolve(tend, &mut instant)?;
 
-    let file = File::open("res.sim")?;
-    let mut reader = BufReader::new(file);
-    let mut de_sim: Simulation = bincode::deserialize_from(&mut reader).unwrap();
-    assert!(de_sim == sim);
+    #[cfg(feature = "serde1")]
+    {
+        let file = std::fs::File::open("res.sim")?;
+        let mut reader = std::io::BufReader::new(file);
+        let mut de_sim: Simulation = bincode::deserialize_from(&mut reader).unwrap();
+        assert!(de_sim == sim);
 
-    de_sim.evolve(tend, &mut instant)?;
-    assert!(de_sim == sim);
+        de_sim.evolve(tend, &mut instant)?;
+        assert!(de_sim == sim);
+    }
 
     Ok(())
 }
